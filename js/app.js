@@ -238,9 +238,12 @@ function setupInstall() {
 
 function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
-  navigator.serviceWorker.register('./sw.js').then((reg) => {
+  navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then((reg) => {
     const announce = (worker) => toast('Update available', { action: 'Refresh', timeout: 0, onAction: () => applyUpdate(worker) });
-    if (reg.waiting && navigator.serviceWorker.controller) announce(reg.waiting);
+    // An update that finished downloading during an earlier visit is applied right away: the app has only just
+    // opened, so there is nothing half-typed to lose.
+    if (reg.waiting && navigator.serviceWorker.controller) reg.waiting.postMessage('SKIP_WAITING');
+    reg.update().catch(() => {}); // look for a newer version on every launch
     reg.addEventListener('updatefound', () => {
       const w = reg.installing;
       w?.addEventListener('statechange', () => {

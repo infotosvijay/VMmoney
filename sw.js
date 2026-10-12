@@ -14,7 +14,13 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));
+  // cache:'reload' skips the browser's own HTTP cache (GitHub Pages keeps files for ~10 minutes), so a new
+  // version never gets built from stale copies of the old files.
+  e.waitUntil(caches.open(CACHE).then((c) => Promise.all(ASSETS.map(async (url) => {
+    const res = await fetch(new Request(url, { cache: 'reload' }));
+    if (!res.ok) throw new Error(`${url}: ${res.status}`);
+    await c.put(url, res);
+  }))));
   // No skipWaiting here: the app asks the user first ("Update available - tap to refresh").
 });
 
