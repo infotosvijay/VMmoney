@@ -9,7 +9,7 @@ import * as recurring from './recurring.js';
 import * as sync from './sync.js';
 import * as hubfile from './hubfile.js';
 import * as lock from './lock.js';
-import { $, applyTheme, toast, pickFiles, promptDialog, pickDialog, destroyCharts, sheet, shareOrDownload } from './ui/components.js';
+import { $, consumeSlide, applyTheme, toast, pickFiles, promptDialog, pickDialog, destroyCharts, sheet, shareOrDownload } from './ui/components.js';
 import { memberRoutes, memberNav } from './ui/member-screens.js';
 import { hubRoutes, hubNav } from './ui/hub-screens.js';
 
@@ -108,6 +108,8 @@ async function render() {
     console.error(e);
     view.innerHTML = `<div class="card"><h2>Something went wrong</h2><p class="muted">${esc(e.message)}</p></div>`;
   }
+  const slide = consumeSlide();
+  if (slide) { view.classList.add('slide-' + slide); setTimeout(() => view.classList.remove('slide-' + slide), 260); }
   highlightNav(def.navId || id);
   window.scrollTo(0, route === ctx._lastRoute ? y : 0);
   ctx._lastRoute = route;

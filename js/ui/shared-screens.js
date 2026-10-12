@@ -7,7 +7,7 @@ import * as cats from '../categories.js';
 import * as tx from '../transactions.js';
 import * as recurring from '../recurring.js';
 import * as reports from '../reports.js';
-import { installBanner, syncReminder, moneyC, $, $$, money, toast, confirmDialog, promptDialog, empty, download, compressImage, drawChart, cssVar, sheet, memberOptions } from './components.js';
+import { onSwipe, installBanner, syncReminder, moneyC, $, $$, money, toast, confirmDialog, promptDialog, empty, download, compressImage, drawChart, cssVar, sheet, memberOptions } from './components.js';
 
 // ---------------------------------------------------------------- rows
 
@@ -361,6 +361,15 @@ export async function transactionsScreen(root, ctx) {
 
   const selected = new Set();
   const bulkBtn = () => $('[data-bulk]', root);
+  if (view.seg) {
+    // swipe left / right to move between Mine, the other person, and Family
+    const order = ['me', 'other', 'all'];
+    onSwipe(root, (dir) => {
+      const n = order.indexOf(view.w) + (dir === 'next' ? 1 : -1);
+      if (n < 0 || n >= order.length) return false;
+      setF({ w: order[n] === 'me' ? '' : order[n] });
+    });
+  }
   root.onclick = async (e) => {
     const b = e.target.closest('button');
     const th = e.target.closest('th[data-sort]');

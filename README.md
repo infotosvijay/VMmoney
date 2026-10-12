@@ -82,6 +82,7 @@ All paths in the app are relative, so it works under that `/vm-money/` sub-path 
 |---|---|
 | **Entries** (opens first) | This month's entries. The big **＋** adds one: pick the amount, **Today / Yesterday / Pick date**, category, then Save. |
 | **Summary** | Month totals, top categories, budget alerts, money position. |
+| **Swipe** | On Entries, swipe left / right to switch Mine / the other person / Family. On Balances, swipe to move between Overview, Banks, Cash and Cards. |
 | **Balances** | Banks, cash and cards for VJ and MM, who pays each card, and a shortage check against the Balance in hand from your entries (automatic). Share summary button. |
 | **More** | Reports, Budgets, Family view, Sync, Categories, Settings. |
 | **Transfer** | In the add form, *Transfer → With VJ/MM* records money moved between the two of you (not income or expense). Record it on one phone only. |

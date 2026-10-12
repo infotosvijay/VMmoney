@@ -5,7 +5,7 @@ import { cfg } from '../db.js';
 import { esc, FAMILY, otherMember, localDate } from '../models.js';
 import * as H from '../holdings.js';
 import * as tx from '../transactions.js';
-import { $, $$, money, toast, confirmDialog, pickDialog, pickFiles, shareOrDownload, download, empty } from './components.js';
+import { onSwipe, $, $$, money, toast, confirmDialog, pickDialog, pickFiles, shareOrDownload, download, empty } from './components.js';
 
 const person = (id) => FAMILY.find((f) => f.id === id) || { id, name: '?', color: '#64748b' };
 const pbadge = (id) => { const p = person(id); return `<span class="pbadge" style="--c:${esc(p.color)}">${esc(p.name)}</span>`; };
@@ -64,6 +64,16 @@ export async function positionScreen(root, ctx) {
     ctx.refresh();
   });
   wireMoneyInputs(root);
+
+  // swipe left / right to move between Overview, Banks, Cash and Cards
+  const order = ['overview', 'banks', 'cash', 'cards'];
+  onSwipe(root, (dir) => {
+    const n = order.indexOf(tab) + (dir === 'next' ? 1 : -1);
+    if (n < 0 || n >= order.length) return false;
+    tab = order[n];
+    history.replaceState(null, '', `#/position?s=${tab}`);
+    ctx.refresh();
+  });
 }
 
 // live-updating numbers without re-rendering the inputs (keeps focus while you type)

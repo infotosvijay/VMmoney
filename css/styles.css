@@ -325,3 +325,13 @@ dialog.sheet::backdrop { background: rgba(0,0,0,.45); }
 .sumline > span { white-space: nowrap; }
 .balchip { padding: 2px 9px; border-radius: 99px; background: var(--brand-soft); color: var(--text); font-weight: 650; }
 .balchip.expense { background: color-mix(in srgb, var(--danger) 14%, var(--card)); color: var(--danger); }
+
+/* ---------- swipe ---------- */
+/* the browser must not treat a sideways swipe as "go back" or as a scroll: the app handles it */
+html, body { overscroll-behavior-x: none; }
+#view.swipeable { min-height: 60vh; touch-action: pan-y pinch-zoom; }
+@keyframes slideFromRight { from { opacity: .35; transform: translateX(32px); } to { opacity: 1; transform: none; } }
+@keyframes slideFromLeft { from { opacity: .35; transform: translateX(-32px); } to { opacity: 1; transform: none; } }
+#view.slide-left { animation: slideFromRight .22s ease-out; }
+#view.slide-right { animation: slideFromLeft .22s ease-out; }
+@media (prefers-reduced-motion: reduce) { #view.slide-left, #view.slide-right { animation: none; } }

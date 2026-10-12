@@ -189,3 +189,32 @@ export function syncReminder(changedSince) {
   if (!changedSince || daysSince(cfg.lastExportAt) < 7) return '';
   return `<div class="banner"><b>Time to sync with the Hub</b><p class="small">Last sent ${esc(relTime(cfg.lastExportAt))}. This also works as a backup.</p><div class="row"><a class="btn primary small" href="#/sync">Sync now</a></div></div>`;
 }
+
+// ---- swipe between tabs (touch screens) ----
+
+let pendingSlide = null;
+/** Which way the last swipe went, so the next screen can slide in from that side. Read once. */
+export const consumeSlide = () => { const d = pendingSlide; pendingSlide = null; return d; };
+
+/**
+ * Horizontal swipe on `el`: calls handler('next') for a swipe left, handler('prev') for a swipe right.
+ * Return false from the handler when there is nothing further in that direction.
+ * Ignored when the swipe starts on a field, a table, or anything marked .no-swipe, and when it is mostly vertical.
+ */
+export function onSwipe(el, handler, { min = 70 } = {}) {
+  el.classList.add('swipeable'); // gives short pages enough height to swipe on
+  let x0 = 0, y0 = 0, t0 = 0, ok = false;
+  el.addEventListener('touchstart', (e) => {
+    ok = e.touches.length === 1 && !e.target.closest('input, select, textarea, canvas, .table-wrap, .no-swipe');
+    if (ok) { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now(); }
+  }, { passive: true });
+  el.addEventListener('touchend', (e) => {
+    if (!ok) return;
+    ok = false;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - x0;
+    const dy = t.clientY - y0;
+    if (Date.now() - t0 > 700 || Math.abs(dx) < min || Math.abs(dy) > Math.abs(dx) * 0.6) return;
+    if (handler(dx < 0 ? 'next' : 'prev') !== false) pendingSlide = dx < 0 ? 'left' : 'right';
+  }, { passive: true });
+}
