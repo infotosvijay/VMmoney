@@ -26,6 +26,17 @@ export function whoSeg(w) {
   return `<div class="seg who-seg no-print" role="tablist" aria-label="Whose entries">${[['me', 'Mine'], ['other', o.name], ['all', 'Family']].map(([k, l]) => `<button data-w="${k}" class="${w === k ? 'on' : ''}">${esc(l)}</button>`).join('')}</div>`;
 }
 
+/** 💵 for cash, 🌐 for online. Empty for moves between your own accounts (the title already says "Online → Cash"). */
+export function payIcon(t) {
+  if (t.type === 'transfer' && !t.toMemberId) return '';
+  const id = String(t.accountId || '');
+  if (!id) return '';
+  const cash = id.endsWith('-cash') || db.get('accounts', id)?.type === 'cash';
+  return cash
+    ? '<span class="pay cash" role="img" aria-label="Cash" title="Cash">💵</span>'
+    : '<span class="pay online" role="img" aria-label="Online" title="Online">🌐</span>';
+}
+
 export function txRow(t, { showMember = false } = {}) {
   const c = cats.get(t.categoryId);
   const sub = cats.get(t.subcategoryId);
@@ -39,7 +50,7 @@ export function txRow(t, { showMember = false } = {}) {
   if (showMember) parts.push(tx.memberName(t.ownerId));
   if (t.note) parts.push(t.note);
   const sign = t.type === 'income' ? '+' : t.type === 'expense' ? '−' : '';
-  const inner = `<span class="avatar">${ico}</span><span class="main"><span class="title">${esc(title)}${t.receiptPhoto ? ' 📎' : ''}${t.recurringId ? ' 🔁' : ''}</span><span class="sub">${esc(parts.join(' · ') || tx.accountName(t.accountId))}</span></span><span class="num ${t.type}">${sign}${money(t.amount)}</span>`;
+  const inner = `<span class="avatar">${ico}${payIcon(t)}</span><span class="main"><span class="title">${esc(title)}${t.receiptPhoto ? ' 📎' : ''}${t.recurringId ? ' 🔁' : ''}</span><span class="sub">${esc(parts.join(' · ') || tx.accountName(t.accountId))}</span></span><span class="num ${t.type}">${sign}${money(t.amount)}</span>`;
   return tx.canEdit(t)
     ? `<a class="list-item" href="#/add?id=${esc(t.id)}">${inner}</a>`
     : `<div class="list-item">${inner}</div>`;
@@ -363,7 +374,7 @@ function hubTable(list) {
       <td><input type="checkbox" data-sel="${esc(t.id)}" aria-label="Select"></td>
       <td class="num">${esc(t.date)}</td>
       <td><span class="dot" style="background:${esc(tx.memberColor(t.ownerId))}"></span> ${esc(tx.memberName(t.ownerId))}</td>
-      <td>${esc(cats.pathLabel(t))}</td><td>${esc(t.note)}${t.receiptPhoto ? ' 📎' : ''}</td><td>${esc(tx.accountName(t.accountId))}</td>
+      <td>${esc(cats.pathLabel(t))}</td><td>${esc(t.note)}${t.receiptPhoto ? ' 📎' : ''}</td><td>${payIcon(t)} ${esc(tx.accountName(t.accountId))}</td>
       <td class="r num ${t.type}">${t.type === 'income' ? '+' : t.type === 'expense' ? '−' : ''}${money(t.amount)}</td>
       <td>${tx.canEdit(t) ? `<a href="#/add?id=${esc(t.id)}" aria-label="Edit">✎</a>` : ''}</td></tr>`).join('')}</tbody></table></div></div>`;
 }
