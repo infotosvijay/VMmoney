@@ -300,3 +300,7 @@ dialog.sheet::backdrop { background: rgba(0,0,0,.45); }
 .rank .delta { min-width: 52px; text-align: right; }
 .rank.sel { background: var(--brand-soft); border-radius: 8px; }
 .sel-row td { background: var(--brand-soft); }
+
+.cat-grid.collapsed { grid-template-columns: minmax(120px, 160px); }
+.cat-grid.collapsed .cat-tile { flex-direction: row; justify-content: flex-start; gap: 10px; min-height: 52px; padding: 8px 14px; font-size: .95rem; text-align: left; }
+.cat-grid.collapsed .cat-tile .e { font-size: 1.4rem; }

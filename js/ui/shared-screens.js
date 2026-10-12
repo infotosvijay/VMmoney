@@ -110,10 +110,10 @@ export async function entryScreen(root, ctx) {
         </div>
         ${isT ? '' : `
         <div>
-          <div class="card-head"><b>Category</b><button type="button" class="btn small ghost" data-newcat>+ New</button></div>
-          <div class="cat-grid">
+          <div class="card-head"><b>Category</b>${picked || archivedPick ? '<span class="muted small">Tap it again to change</span>' : '<button type="button" class="btn small ghost" data-newcat>+ New</button>'}</div>
+          <div class="cat-grid ${picked || archivedPick ? 'collapsed' : ''}">
             ${archivedPick ? `<button type="button" class="cat-tile on" disabled><span class="e">${esc(archivedPick.icon)}</span>${esc(archivedPick.name)} (archived)</button>` : ''}
-            ${tree.map(({ cat }) => `<button type="button" class="cat-tile ${cat.id === st.categoryId ? 'on' : ''}" data-cat="${esc(cat.id)}"><span class="e">${esc(cat.icon)}</span>${esc(cat.name)}</button>`).join('')}
+            ${tree.filter(({ cat }) => !picked || cat.id === st.categoryId).map(({ cat }) => `<button type="button" class="cat-tile ${cat.id === st.categoryId ? 'on' : ''}" data-cat="${esc(cat.id)}"><span class="e">${esc(cat.icon)}</span>${esc(cat.name)}</button>`).join('')}
           </div>
         </div>
         ${picked ? `<div><div class="card-head"><b>${esc(picked.cat.name)}: subcategory <span class="muted small">(optional)</span></b><button type="button" class="btn small ghost" data-newsub>+ New</button></div>
@@ -198,7 +198,7 @@ export async function entryScreen(root, ctx) {
       else if (b.dataset.date) { sync(); st.date = b.dataset.date; draw(); }
       else if (b.dataset.xfer) { sync(); st.xfer = b.dataset.xfer; draw(); }
       else if (b.dataset.dir) { sync(); st.direction = b.dataset.dir; draw(); }
-      else if (b.dataset.cat) { sync(); st.categoryId = b.dataset.cat; st.subcategoryId = null; draw(); }
+      else if (b.dataset.cat) { sync(); const same = st.categoryId === b.dataset.cat; st.categoryId = same ? null : b.dataset.cat; st.subcategoryId = null; draw(); }
       else if (b.dataset.sub) { sync(); st.subcategoryId = st.subcategoryId === b.dataset.sub ? null : b.dataset.sub; draw(); }
       else if ('newcat' in b.dataset) {
         sync();
