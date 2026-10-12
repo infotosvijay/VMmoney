@@ -130,9 +130,6 @@ export async function entryScreen(root, ctx) {
         ${isT ? `<div class="seg"><button type="button" data-xfer="own" class="${mT ? '' : 'on'}">Between my accounts</button><button type="button" data-xfer="member" class="${mT ? 'on' : ''}">With ${esc(other.name)}</button></div>
         ${mT ? `<div class="seg"><button type="button" data-dir="out" class="${st.direction === 'in' ? '' : 'on'}">I paid ${esc(other.name)}</button><button type="button" data-dir="in" class="${st.direction === 'in' ? 'on' : ''}">${esc(other.name)} paid me</button></div>
         <p class="muted small">Record it once: the other person's balance goes up (or down, if they paid you) automatically. If you both record it (same amount, same or next day) it is counted once. It never counts as income or expense.</p>` : ''}` : ''}
-        <label class="field"><span>Amount (${esc(cfg.currency || 'INR')})</span>
-          <input id="amount" class="amount-input" inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(st.amount)}" ${existing ? '' : 'autofocus'}>
-        </label>
         <div>
           <span class="lbl">Date</span>
           <div class="chips date-chips">
@@ -156,6 +153,9 @@ export async function entryScreen(root, ctx) {
           ${isT && !mT ? `<div class="seg">${[[accounts[0], accounts[1]], [accounts[1], accounts[0]]].map(([f, to]) => `<button type="button" data-xdir="${esc(f.id)}|${esc(to.id)}" class="${st.accountId === f.id ? 'on' : ''}">${esc(f.name)} → ${esc(to.name)}</button>`).join('')}</div>`
             : `<div class="seg">${accounts.map((a) => `<button type="button" data-acc="${esc(a.id)}" class="${a.id === st.accountId ? 'on' : ''}">${esc(a.name)}</button>`).join('')}</div>`}
         </div>
+        <label class="field"><span>Amount (${esc(cfg.currency || 'INR')})</span>
+          <input id="amount" class="amount-input" inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(st.amount)}">
+        </label>
         ${existing || isT ? '' : `<label class="field"><span>Repeat</span>
           <select id="repeat"><option value="">Does not repeat</option>${FREQUENCIES.map(([v, l]) => `<option value="${v}" ${v === st.repeat ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`}
         <label class="field"><span>Note</span><input id="note" maxlength="200" value="${esc(st.note)}" placeholder="What was it for?"></label>
@@ -176,7 +176,6 @@ export async function entryScreen(root, ctx) {
         ${existing ? '<button type="button" class="btn danger" data-delete style="width:100%">Delete entry</button>' : ''}
       </form>`;
     bind();
-    if (!existing && !focused) { focused = true; $('#amount', root)?.focus(); }
   }
 
   function sync() {
@@ -217,7 +216,7 @@ export async function entryScreen(root, ctx) {
     if (again) {
       Object.assign(st, { amount: '', note: '', tagsText: '', receiptPhoto: null, repeat: '', subcategoryId: null });
       draw();
-      $('#amount', root).focus();
+      window.scrollTo({ top: 0, behavior: 'smooth' }); // ready for the next category
     } else (existing || ctx.params.get('date')) && history.length > 1 ? history.back() : ctx.go('transactions');
   }
 
