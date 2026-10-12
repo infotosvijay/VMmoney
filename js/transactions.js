@@ -24,8 +24,10 @@ export const remove = (id) => db.update('transactions', id, { deleted: true });
 export function query(f = {}) {
   const text = f.text?.trim().toLowerCase();
   let list = db.live('transactions');
-  if (f.scope === 'mine') list = list.filter(mine);
-  if (f.memberId) list = list.filter((t) => t.ownerId === f.memberId);
+  // a VJ <-> MM transfer belongs to both people: the one who recorded it and the one it was sent to / received from
+  const involves = (t, id) => t.ownerId === id || (t.type === 'transfer' && t.toMemberId === id);
+  if (f.scope === 'mine') list = list.filter((t) => involves(t, cfg.memberId));
+  if (f.memberId) list = list.filter((t) => involves(t, f.memberId));
   if (f.from) list = list.filter((t) => t.date >= f.from);
   if (f.to) list = list.filter((t) => t.date <= f.to);
   if (f.type) list = list.filter((t) => t.type === f.type);

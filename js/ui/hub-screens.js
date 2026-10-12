@@ -49,7 +49,7 @@ async function dashboardScreen(root, ctx) {
     ${positionCard()}
     ${transferNote()}
     <div class="grid two">
-      <div class="card"><h2>Per member</h2>${members.length ? `<table class="tbl"><thead><tr><th>Member</th><th class="r">Income</th><th class="r">Expense</th></tr></thead><tbody>${members.map((m) => `<tr><td><span class="dot" style="background:${esc(m.color)}"></span> ${esc(m.name)}</td><td class="r num income">${money(m.income)}</td><td class="r num expense">${money(m.expense)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No entries this month.</p>'}</div>
+      <div class="card"><h2>Per member</h2>${members.length ? `<table class="tbl"><thead><tr><th>Member</th><th class="r">Income</th><th class="r">Expense</th><th class="r">In hand</th></tr></thead><tbody>${members.map((m) => `<tr><td><span class="dot" style="background:${esc(m.color)}"></span> ${esc(m.name)}</td><td class="r num income">${money(m.income)}</td><td class="r num expense">${money(m.expense)}</td><td class="r num">${money(tx.inHand(m.id).total)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No entries this month.</p>'}</div>
       <div class="card"><h2>6-month trend</h2><div class="chart-box"><canvas id="c-trend"></canvas></div></div>
     </div>
     <div class="grid two">

@@ -37,20 +37,26 @@ export function payIcon(t) {
     : '<span class="pay online" role="img" aria-label="Online" title="Online">🌐</span>';
 }
 
-export function txRow(t, { showMember = false } = {}) {
+export function txRow(t, { showMember = false, as = null } = {}) {
   const c = cats.get(t.categoryId);
   const sub = cats.get(t.subcategoryId);
   const isT = t.type === 'transfer';
   const ico = isT ? (t.toMemberId ? '🤝' : '🔁') : c?.icon || '🏷️';
+  // For a VJ <-> MM transfer, say who it came from / went to, as seen by `as` (default: the person who recorded it)
+  const famX = isT && t.toMemberId;
+  const viewer = as || t.ownerId;
+  const incoming = famX && ((t.direction === 'out' && t.toMemberId === viewer) || (t.direction === 'in' && t.ownerId === viewer));
+  const counterpart = famX ? tx.memberName(viewer === t.ownerId ? t.toMemberId : t.ownerId) : '';
   const title = isT
-    ? (t.toMemberId ? cats.pathLabel(t) : `${tx.accountName(t.accountId)} → ${tx.accountName(t.toAccountId)}`)
+    ? (famX ? `Transfer ${incoming ? 'from' : 'to'} ${counterpart}` : `${tx.accountName(t.accountId)} → ${tx.accountName(t.toAccountId)}`)
     : sub?.name || c?.name || 'Uncategorized';
   const parts = [];
   if (sub && c) parts.push(c.name);
   if (showMember) parts.push(tx.memberName(t.ownerId));
   if (t.note) parts.push(t.note);
-  const sign = t.type === 'income' ? '+' : t.type === 'expense' ? '−' : '';
-  const inner = `<span class="avatar">${ico}${payIcon(t)}</span><span class="main"><span class="title">${esc(title)}${t.receiptPhoto ? ' 📎' : ''}${t.recurringId ? ' 🔁' : ''}</span><span class="sub">${esc(parts.join(' · ') || tx.accountName(t.accountId))}</span></span><span class="num ${t.type}">${sign}${money(t.amount)}</span>`;
+  const sign = famX ? (incoming ? '+' : '−') : t.type === 'income' ? '+' : t.type === 'expense' ? '−' : '';
+  const amountClass = famX ? (incoming ? 'income' : 'expense') : t.type;
+  const inner = `<span class="avatar">${ico}${payIcon(t)}</span><span class="main"><span class="title">${esc(title)}${t.receiptPhoto ? ' 📎' : ''}${t.recurringId ? ' 🔁' : ''}</span><span class="sub">${esc(parts.join(' · ') || tx.accountName(t.accountId))}</span></span><span class="num ${amountClass}">${sign}${money(t.amount)}</span>`;
   return tx.canEdit(t)
     ? `<a class="list-item" href="#/add?id=${esc(t.id)}">${inner}</a>`
     : `<div class="list-item">${inner}</div>`;
@@ -304,13 +310,13 @@ export async function transactionsScreen(root, ctx) {
 
   const fsumText = () => 'Filters' + (activeCount ? ` (${activeCount} on)` : '');
   // Balance in hand (Online + Cash) is always shown on your own list, whatever the filters, so it can be checked here.
-  const balanceNow = !hub && view.w === 'me' ? tx.inHand(cfg.memberId).total : null;
+  const balanceNow = hub || view.w === 'all' ? null : tx.inHand(view.w === 'other' ? view.memberId : cfg.memberId).total;
   const bottomHTML = () => `
         <span class="sumline small"><span title="Entries">🧾 ${list.length}</span><span class="income num" title="Income">+${moneyC(tot.income)}</span><span class="expense num" title="Spending">−${moneyC(tot.expense)}</span>${balanceNow != null ? `<span class="balchip num ${balanceNow < 0 ? 'expense' : ''}" title="Balance in hand">Bal ${moneyC(balanceNow)}</span>` : ''}</span>
         <span class="row">${activeCount ? '<button class="btn small" data-clear>✕ Clear filters</button>' : ''}${hub ? '<button class="btn small" data-csv>⬇ CSV</button><button class="btn small" data-bulk disabled>Recategorize</button>' : ''}</span>
 `;
   const resultsHTML = () => `
-    ${list.length ? (hub ? hubTable(page) : groupedList(page, { showMember: scope === 'all' })) : empty('No entries here.', activeCount ? 'Nothing matches these filters. Tap <b>Clear filters</b> above.' : 'Tap the blue <b>＋</b> below to add one, or try another month.')}
+    ${list.length ? (hub ? hubTable(page) : groupedList(page, { showMember: scope === 'all', as: view.w === 'me' ? cfg.memberId : view.w === 'other' ? view.memberId : null })) : empty('No entries here.', activeCount ? 'Nothing matches these filters. Tap <b>Clear filters</b> above.' : 'Tap the blue <b>＋</b> below to add one, or try another month.')}
     ${list.length > shown ? `<button class="btn" style="width:100%" data-more-rows>Show ${Math.min(200, list.length - shown)} more (${list.length - shown} left)</button>` : ''}
 `;
 
@@ -506,7 +512,7 @@ export async function reportsScreen(root, ctx) {
       <p class="muted small no-print" style="margin:8px 2px">Tap a category for its subcategories, month-by-month history and daily entries.</p>
     </div>
     ${hub ? `<div class="card"><h2>Member comparison</h2>${members.length ? `<div class="chart-box"><canvas id="c-mem" aria-label="Members"></canvas></div>
-      <table class="tbl"><thead><tr><th>Member</th><th class="r">Income</th><th class="r">Expense</th></tr></thead><tbody>${members.map((m) => `<tr><td><span class="dot" style="background:${esc(m.color)}"></span> ${esc(m.name)}</td><td class="r num income">${money(m.income)}</td><td class="r num expense">${money(m.expense)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No data.</p>'}</div>` : ''}
+      <table class="tbl"><thead><tr><th>Member</th><th class="r">Income</th><th class="r">Expense</th><th class="r">In hand</th></tr></thead><tbody>${members.map((m) => `<tr><td><span class="dot" style="background:${esc(m.color)}"></span> ${esc(m.name)}</td><td class="r num income">${money(m.income)}</td><td class="r num expense">${money(m.expense)}</td><td class="r num">${money(tx.inHand(m.id).total)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No data.</p>'}</div>` : ''}
   `;
 
   root.onclick = (e) => {

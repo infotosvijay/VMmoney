@@ -47,13 +47,13 @@ function inHandCard(month) {
 function familyCard(month) {
   if (!tx.hasFamilyData()) return '';
   const spent = (id) => reports.totals(tx.query({ scope: 'all', memberId: id, from: `${month}-01`, to: `${month}-31` })).expense;
-  const rows = FAMILY.map((f) => ({ f, v: spent(f.id) }));
+  const rows = FAMILY.map((f) => ({ f, v: spent(f.id), h: tx.inHand(f.id).total }));
   const total = rows.reduce((s, r) => s + r.v, 0);
   const other = otherMember(cfg.memberId);
   return `<a class="card" href="#/reports?w=all" style="display:block;text-decoration:none;color:inherit">
     <div class="card-head"><h2>Family spending · ${esc(monthLabel(month, false))}</h2><span class="small">Details ›</span></div>
     <div class="stat" style="padding:0"><div class="label">Together</div><div class="value expense">${money(total)}</div></div>
-    <div class="row between small" style="margin-top:8px">${rows.map((r) => `<span><span class="pbadge" style="--c:${esc(r.f.color)}">${esc(r.f.name)}</span> <b class="num">${money(r.v)}</b></span>`).join('')}</div>
+    ${rows.map((r) => `<div class="row between small" style="margin-top:8px"><span class="pbadge" style="--c:${esc(r.f.color)}">${esc(r.f.name)}</span><span>Spent <b class="num">${money(r.v)}</b> · In hand <b class="num ${r.h < 0 ? 'expense' : ''}">${money(r.h)}</b></span></div>`).join('')}
     <p class="muted small" style="margin:8px 0 0">${esc(other.name)}'s entries as of the last sync ${esc(relTime(cfg.familyEntriesAt))}.</p></a>`;
 }
 
