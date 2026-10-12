@@ -2,7 +2,7 @@
 
 import * as db from '../db.js';
 import { cfg } from '../db.js';
-import { esc, thisMonth, monthLabel, FAMILY, otherMember } from '../models.js';
+import { esc, thisMonth, monthLabel, monthRange, addMonths, FAMILY, otherMember } from '../models.js';
 import * as cats from '../categories.js';
 import * as tx from '../transactions.js';
 import * as reports from '../reports.js';
@@ -25,24 +25,24 @@ export const planSummary = (plans) => plans
 // ---------------------------------------------------------------- home
 
 /** "Family this month": what each of you spent, from the entries the hub sent back. */
-function inHandCard() {
+function inHandCard(month) {
+  const past = month < thisMonth();
+  const upTo = past ? monthRange(month).to : null;
+  const h = tx.inHand(cfg.memberId, upTo);
   const on = tx.onlineAccount();
   const cash = tx.cashAccount();
-  const o = on ? tx.accountBalance(on) : 0;
-  const c = cash ? tx.accountBalance(cash) : 0;
   // Only nudge a brand-new user. Once income entries exist, the balance simply builds up from them.
   const noIncome = !db.live('transactions').some((t) => t.ownerId === cfg.memberId && t.type === 'income');
   const unset = noIncome && !(on?.openingBalance) && !(cash?.openingBalance);
   return `<div class="card">
     <div class="card-head"><h2>Balance in hand</h2>${unset ? '<a class="small" href="#/accounts">Set opening balance ›</a>' : ''}</div>
-    <div class="stat" style="padding:0"><div class="value ${o + c >= 0 ? 'income' : 'expense'}">${money(o + c)}</div></div>
+    <div class="stat" style="padding:0"><div class="value ${h.total >= 0 ? 'income' : 'expense'}" style="font-size:1.9rem">${money(h.total)}</div></div>
     <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
-      <div class="inhand"><span class="muted small">🏦 Online</span><b class="num ${o < 0 ? 'expense' : ''}">${money(o)}</b></div>
-      <div class="inhand"><span class="muted small">💵 Cash</span><b class="num ${c < 0 ? 'expense' : ''}">${money(c)}</b></div>
+      <div class="inhand"><span class="muted small">🏦 Online</span><b class="num ${h.online < 0 ? 'expense' : ''}">${money(h.online)}</b></div>
+      <div class="inhand"><span class="muted small">💵 Cash</span><b class="num ${h.cash < 0 ? 'expense' : ''}">${money(h.cash)}</b></div>
     </div>
-    <p class="muted small" style="margin:8px 0 0">${unset
-      ? 'Add your income, or set an opening balance, to get started.'
-      : 'Built from all your income and expenses so far. Whatever is left carries into the next month automatically.'}</p></div>`;
+    ${unset ? '<p class="muted small" style="margin:8px 0 0">Add your income, or set an opening balance, to get started.</p>'
+      : past ? `<p class="muted small" style="margin:8px 0 0">As it stood at the end of ${esc(monthLabel(month, false))}.</p>` : ''}</div>`;
 }
 
 function familyCard(month) {
@@ -59,33 +59,46 @@ function familyCard(month) {
 }
 
 async function homeScreen(root, ctx) {
-  const month = thisMonth();
-  const mine = tx.query({ scope: 'mine', from: `${month}-01`, to: `${month}-31` });
+  const cur = thisMonth();
+  const asked = ctx.params.get('m') || '';
+  const month = /^\d{4}-\d{2}$/.test(asked) && asked <= cur ? asked : cur;
+  const mine = tx.query({ scope: 'mine', ...monthRange(month) });
   const tot = reports.totals(mine);
   const top = reports.byCategory(mine).slice(0, 5);
-  const recent = tx.query({ scope: 'mine' }).slice(0, 6);
+  const recent = mine.slice(0, 6);
   const alerts = budgets.alerts({ month, memberOnly: true });
 
   root.innerHTML = `
-    <div class="grid stats">
-      <div class="card stat"><div class="label">Spent in ${esc(monthLabel(month, false))}</div><div class="value expense">${money(tot.expense)}</div></div>
-      <div class="card stat"><div class="label">Income</div><div class="value income">${money(tot.income)}</div></div>
-      <div class="card stat"><div class="label">Saved this month</div><div class="value ${tot.net >= 0 ? 'income' : 'expense'}">${money(tot.net)}</div></div>
+    <div class="row between" style="margin-bottom:12px">
+      <button class="btn small" data-mnav="-1" aria-label="Previous month">‹</button>
+      <b>${esc(monthLabel(month))}</b>
+      <button class="btn small" data-mnav="1" aria-label="Next month" ${month >= cur ? 'disabled' : ''}>›</button>
     </div>
-    ${inHandCard()}
+    ${inHandCard(month)}
+    <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px">
+      <div class="card stat"><div class="label">Income</div><div class="value income">${money(tot.income)}</div></div>
+      <div class="card stat"><div class="label">Spending</div><div class="value expense">${money(tot.expense)}</div></div>
+    </div>
     ${alerts.length ? `<div class="card"><div class="card-head"><h2>Budget alerts</h2><a href="#/budgets" class="small">All budgets</a></div>
       ${alerts.map((a) => `<div style="margin-bottom:10px"><div class="row between small"><b>${esc(a.label)}</b><span class="${a.level === 'over' ? 'danger-text' : ''}">${Math.round(a.pct)}% of ${money(a.budget.limit)}</span></div>${progress(a.pct, a.level)}</div>`).join('')}</div>` : ''}
     ${familyCard(month)}
-    ${positionCard()}
     <div class="grid two">
-      <div class="card"><div class="card-head"><h2>Top categories</h2><a href="#/reports" class="small">Reports</a></div>
-        ${top.length ? top.map((c) => `<div style="margin-bottom:10px"><div class="row between small"><span>${esc(c.icon)} ${esc(c.name)}</span><span class="num">${money(c.total)}</span></div>${progress((c.total / tot.expense) * 100)}</div>`).join('') : '<p class="muted">No expenses yet this month.</p>'}
+      <div class="card"><div class="card-head"><h2>Top categories</h2><a href="#/reports?d=${month}" class="small">Reports</a></div>
+        ${top.length ? top.map((c) => `<div style="margin-bottom:10px"><div class="row between small"><span>${esc(c.icon)} ${esc(c.name)}</span><span class="num">${money(c.total)}</span></div>${progress((c.total / tot.expense) * 100)}</div>`).join('') : '<p class="muted">No spending in this month.</p>'}
       </div>
-      <div class="card"><div class="card-head"><h2>Recent</h2><a href="#/transactions" class="small">See all</a></div>
-        ${recent.length ? `<div class="list">${recent.map((t) => txRow(t)).join('')}</div>` : empty('No entries yet.', 'Tap <b>＋</b> to add your first one.')}
+      <div class="card"><div class="card-head"><h2>Recent</h2><a href="#/transactions?m=${month}" class="small">See all</a></div>
+        ${recent.length ? `<div class="list">${recent.map((t) => txRow(t)).join('')}</div>` : empty('No entries in this month.', 'Tap <b>＋</b> to add one.')}
       </div>
     </div>
     <p style="text-align:center"><a class="btn primary" href="#/add">＋ Add entry</a></p>`;
+
+  root.onclick = (e) => {
+    const b = e.target.closest('[data-mnav]');
+    if (!b || b.disabled) return;
+    const next = addMonths(month, Number(b.dataset.mnav));
+    history.replaceState(null, '', next === cur ? '#/home' : `#/home?m=${next}`);
+    ctx.refresh();
+  };
 }
 
 // ---------------------------------------------------------------- family view

@@ -131,18 +131,18 @@ function listen(box, ctx) {
 
 function overview(box, ctx) {
   const r = H.position();
-  const mt = H.meta();
   const net = tx.netVjToMm();
-  const st = r.expected == null ? ['none', 'Add “Balance as per expenses”', 'Needed to check for a shortage']
-    : r.shortage === 0 ? ['ok', 'Balanced', 'Actual balance matches your expenses']
-    : r.shortage < 0 ? ['short', `Short by ${money(-r.shortage)}`, 'Actual balance is less than expected']
-    : ['excess', `Excess of ${money(r.shortage)}`, 'Actual balance is more than expected'];
+  const st = r.expected == null ? ['none', 'Add your entries to compare', 'The balance in hand comes from your entries']
+    : r.shortage === 0 ? ['ok', 'Balanced', 'Actual balance matches your entries']
+    : r.shortage < 0 ? ['short', `Short by ${money(-r.shortage)}`, 'Actual balance is less than your entries say']
+    : ['excess', `Excess of ${money(r.shortage)}`, 'Actual balance is more than your entries say'];
   const cards = H.banks().filter((b) => b.cc);
 
   box.innerHTML = `
     <div class="hero"><div class="k">Actual balance</div><div class="v num" data-bind="actual">${money(r.actual)}</div>
       <div class="eq num"><span>Usable <b data-bind="usableTotal">${money(r.usableTotal)}</b></span><span>+ Cash <b data-bind="cash">${money(r.cash)}</b></span><span>− Cards <b data-bind="cc">${money(r.cc)}</b></span></div></div>
     <div class="status ${st[0]}"><b class="num">${st[1]}</b><small>${st[2]}</small></div>
+    ${r.expected != null ? `<p class="muted small" style="margin:8px 4px 0">Compared with <b class="num">${money(r.expected)}</b>, the Balance in hand from your entries (see the Summary page).</p>` : ''}
 
     <h2 class="sec">Who has what</h2>
     <div class="grid two">${r.people.map((p, i) => `
@@ -160,54 +160,25 @@ function overview(box, ctx) {
     <div class="card">${cards.length ? `<div class="list">${cards.map((b) => `<div class="list-item"><span class="main"><span class="title">${esc(b.name || 'Bank')} card</span><span class="sub">${pbadge(b.person)} account</span></span>
       <span class="num expense">${money(b.cc)}</span><span>${pbadge(b.ccPayer || b.person)} pays</span></div>`).join('')}</div><p class="muted small"><a href="#/position?s=cards">Edit cards</a></p>` : '<p class="muted">No credit card pending. Add it on the <a href="#/position?s=cards">Cards</a> tab.</p>'}</div>
 
-    <h2 class="sec">Reconcile</h2>
-    <div class="card stack">
-      <div><span class="lbl">Balance as per expenses</span>${moneyInput('expected', null, mt.expected, 'Balance as per expenses')}<p class="muted small">What your expense records say you should have. Compared with the actual balance to find a shortage.</p></div>
-      <div><span class="lbl">Transfer</span>${moneyInput('transfer', null, mt.transfer, 'Transfer')}
-        <label class="field" style="margin-top:8px"><span>Deducted from</span><select data-f="transferPerson">${FAMILY.map((f) => `<option value="${esc(f.id)}" ${mt.transferPerson === f.id ? 'selected' : ''}>${esc(f.name)}</option>`).join('')}</select></label></div>
-      <div><span class="lbl">Keep this much in every bank (not counted as usable)</span>${moneyInput('minBalance', null, H.minBalance(), 'Minimum balance')}</div>
-    </div>
-
     <h2 class="sec">Between VJ and MM</h2>
     <div class="card"><p>${net === 0 ? 'No money transferred between you two yet.' : net > 0 ? `<b>VJ</b> has transferred <b class="num">${money(net)}</b> more to <b>MM</b> than received.` : `<b>MM</b> has transferred <b class="num">${money(-net)}</b> more to <b>VJ</b> than received.`}</p>
       <p class="muted small">Based on the transfers recorded on this device${cfg.mode === 'hub' ? '' : ' (the Hub has the complete picture)'}.</p>
       <a class="btn small" href="#/add?type=transfer">＋ Record a transfer</a></div>
 
-    <h2 class="sec">Share &amp; export</h2>
-    <div class="row">
-      <button class="btn primary" data-share="json">Share file</button><button class="btn" data-share="summary">Share summary</button>
-      <button class="btn" data-share="tsv">TSV (Excel)</button><button class="btn" data-share="dl">JSON</button><button class="btn" data-import>Import old sheet</button>
-    </div>
-    <p class="muted small">The JSON has the same layout as your Expense.html export, so json_to_excel.py still works.</p>`;
+    <h2 class="sec">Share</h2>
+    <div class="row"><button class="btn primary" data-share="summary">Share summary</button></div>`;
 
   listen(box, ctx);
   box.addEventListener('click', async (e) => {
     const b = e.target.closest('button');
     if (!b) return;
-    const base = `VM_Money_${localDate()}`;
     try {
-      if (b.dataset.share === 'json') await shareOrDownload(`${base}.json`, JSON.stringify(H.exportData(), null, 2));
-      else if (b.dataset.share === 'dl') download(`${base}.json`, JSON.stringify(H.exportData(), null, 2));
-      else if (b.dataset.share === 'tsv') download(`${base}.tsv`, H.toTSV(), 'text/tab-separated-values');
-      else if (b.dataset.share === 'summary') {
+      if (b.dataset.share === 'summary') {
         const text = H.summaryText(money);
         if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); toast('Summary copied'); }
-      } else if ('import' in b.dataset) await importOld(ctx);
+      }
     } catch (err) { if (err.name !== 'AbortError') toast(err.message); }
   });
-}
-
-async function importOld(ctx) {
-  const [file] = await pickFiles();
-  if (!file) return;
-  const d = JSON.parse(await file.text());
-  if (d?.format !== 'expense-sheet') throw new Error('Pick a JSON exported from the old Expense sheet.');
-  const cashPerson = d.cashDetail ? null : await pickDialog('Whose cash is this?', FAMILY.map((f) => [f.id, `${f.name}'s cash`]), { message: 'The old sheet had one cash list for both. Banks 1–5 go to VJ, bank 6 to MM; you can fix any of them afterwards.' });
-  if (!d.cashDetail && !cashPerson) return;
-  if (!(await confirmDialog(`Add ${d.banks.length} banks and ${(d.cash || []).length} cash entries from “${d.sheetName || file.name}”? Existing items stay.`, { okText: 'Import' }))) return;
-  const n = await H.importOldSheet(d, cashPerson);
-  toast(`Imported ${n} items`);
-  ctx.refresh();
 }
 
 // ---------------------------------------------------------------- banks
@@ -225,6 +196,7 @@ function banks(box, ctx) {
         ${moneyInput('bank.balance', b.id, b.balance, `${b.name || 'Bank'} balance`)}
         <div class="row between small" style="margin-top:6px"><span class="muted">Usable (after minimum)</span><b class="num" data-bind="usable-${esc(b.id)}">${money(H.usable(b))}</b></div></div>`).join('') || '<p class="muted">No banks yet.</p>'}
       <button class="btn" style="width:100%" data-addbank="${esc(f.id)}" ${H.banks(f.id).length >= H.MAX_ROWS ? 'disabled' : ''}>＋ Add bank for ${esc(f.name)}</button>`).join('')}
+    <div class="card" style="margin-top:14px"><span class="lbl">Keep this much in every bank (not counted as usable)</span>${moneyInput('minBalance', null, H.minBalance(), 'Minimum balance')}</div>
     <p class="muted small">Each bank counts toward its owner. Card pending is on the Cards tab.</p>`;
   listen(box, ctx);
   box.addEventListener('click', (e) => rowActions(e, ctx, 'bank'));

@@ -6,6 +6,7 @@
 import * as db from './db.js';
 import { cfg } from './db.js';
 import { base, FAMILY, nowISO, localDate } from './models.js';
+import * as tx from './transactions.js';
 
 export const MAX_ROWS = 16;
 export const minBalance = () => (Number(cfg.minBalance) >= 0 && cfg.minBalance != null ? Number(cfg.minBalance) : 2000);
@@ -64,8 +65,7 @@ const sum = (a) => a.reduce((t, x) => t + (Number(x) || 0), 0);
 
 /** Everything the Balances screens show. */
 export function position() {
-  const m = meta();
-  const transfer = Number(m.transfer) || 0;
+  const transfer = 0; // the manual Transfer deduction is gone: VJ <-> MM transfers are entries now
   const people = FAMILY.map((f) => {
     const bs = banks(f.id);
     const cash = sum(cashEntries(f.id).map((c) => c.amount));
@@ -73,7 +73,7 @@ export function position() {
     const bankTotal = sum(bs.map((b) => b.balance));
     // cards this person has to pay, whichever bank they sit on
     const ccToPay = sum(banks().filter((b) => (b.ccPayer || b.person) === f.id).map((b) => b.cc));
-    const xfer = m.transferPerson === f.id ? transfer : 0;
+    const xfer = 0;
     const bankNet = usableTotal - ccToPay - xfer;
     return { ...f, banks: bs, cash, bankTotal, usableTotal, ccToPay, transfer: xfer, bankNet, net: bankNet + cash };
   });
@@ -81,7 +81,8 @@ export function position() {
   const cash = sum(people.map((p) => p.cash));
   const cc = sum(people.map((p) => p.ccToPay));
   const actual = usableTotal + cash - cc;
-  const expected = m.expected == null ? null : Number(m.expected);
+  // "Balance as per entries" is the Balance in hand from the Summary page. Nothing to type in.
+  const expected = db.live('transactions').length ? tx.inHandAll() : null;
   return {
     people, usableTotal, cash, cc, transfer, actual, expected,
     bankTotal: sum(people.map((p) => p.bankTotal)),
@@ -128,6 +129,7 @@ export function toTSV() {
 export function summaryText(money) {
   const r = position();
   const lines = [`*Money position: ${fmtSheetDate(localDate())}*`, `Actual balance: ${money(r.actual)}`];
+  if (r.expected != null) lines.push(`Balance in hand (from entries): ${money(r.expected)}`);
   if (r.shortage != null) lines.push(`Shortage: ${money(r.shortage)}`);
   for (const p of r.people) lines.push(`${p.name}: ${money(p.bankNet)} after cards${p.ccToPay ? ` (to pay ${money(p.ccToPay)})` : ''}, cash ${money(p.cash)}`);
   lines.push(`Total: ${money(r.total)}`);

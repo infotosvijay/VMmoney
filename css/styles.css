@@ -320,3 +320,8 @@ dialog.sheet::backdrop { background: rgba(0,0,0,.45); }
 .avatar .pay { position: absolute; right: -6px; bottom: -6px; width: 20px; height: 20px; font-size: .72rem; border: 2px solid var(--card); background: var(--card); box-shadow: 0 0 0 1px var(--line); }
 .avatar .pay.cash { background: color-mix(in srgb, var(--income) 22%, var(--card)); }
 .avatar .pay.online { background: color-mix(in srgb, var(--plus) 20%, var(--card)); }
+
+.sumline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 9px; color: var(--muted); }
+.sumline > span { white-space: nowrap; }
+.balchip { padding: 2px 9px; border-radius: 99px; background: var(--brand-soft); color: var(--text); font-weight: 650; }
+.balchip.expense { background: color-mix(in srgb, var(--danger) 14%, var(--card)); color: var(--danger); }

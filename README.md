@@ -71,8 +71,7 @@ All paths in the app are relative, so it works under that `/vm-money/` sub-path 
    - Android: tap **Install** in the banner, or browser menu → *Install app*.
    - iPhone: **Share → Add to Home Screen**.
 3. Open the installed app, choose **VJ** or **MM**, then **Phone**.
-4. Set up **Balances** (banks, cash, credit cards, and who pays each card). You can also use
-   *Balances → Overview → Import old sheet* for an export from the old Expense.html.
+4. Set up **Balances** (banks, cash, credit cards, and who pays each card).
 5. Optional: **More → Settings → App lock** to add a PIN or fingerprint.
 
 ---
@@ -83,7 +82,7 @@ All paths in the app are relative, so it works under that `/vm-money/` sub-path 
 |---|---|
 | **Entries** (opens first) | This month's entries. The big **＋** adds one: pick the amount, **Today / Yesterday / Pick date**, category, then Save. |
 | **Summary** | Month totals, top categories, budget alerts, money position. |
-| **Balances** | Banks, cash and cards for VJ and MM, who pays each card, shortage check. |
+| **Balances** | Banks, cash and cards for VJ and MM, who pays each card, and a shortage check against the Balance in hand from your entries (automatic). Share summary button. |
 | **More** | Reports, Budgets, Family view, Sync, Categories, Settings. |
 | **Transfer** | In the add form, *Transfer → With VJ/MM* records money moved between the two of you (not income or expense). Record it on one phone only. |
 
@@ -113,6 +112,10 @@ Every sync also brings back the **other person's entries** (read-only) and the s
 On a phone, Entries and Reports then show **Mine / <other person> / Family**, and Summary shows *Family spending*.
 Data is only as fresh as the last sync: VJ sees MM's latest after MM has synced with the laptop, then VJ syncs.
 When creating a family package by file, keep "Include everyone's entries" ticked.
+
+**Edits and deletions** of existing entries sync the same way: the person syncs with the laptop, then the other person
+syncs, and the newer version wins. New, renamed or archived categories also reach the other phone after the two syncs.
+Prefer archiving a category over deleting it.
 
 Both methods use the same merge rules, so mix them freely. Importing the same file twice changes nothing.
 

@@ -77,9 +77,10 @@ export async function ensureDefaultAccount() {
   if (!db.get('accounts', `acc-${cfg.memberId}-cash`)) await db.put('accounts', mk('cash', 'Cash', 'cash'), { silent: true });
 }
 
-export function accountBalance(acc) {
+export function accountBalance(acc, upTo = null) {
   let bal = Number(acc.openingBalance) || 0;
   for (const t of db.live('transactions')) {
+    if (upTo && t.date > upTo) continue; // balance as of a date
     if (t.accountId === acc.id) {
       const gain = t.type === 'income' || (t.type === 'transfer' && t.toMemberId && t.direction === 'in');
       bal += gain ? t.amount : -t.amount; // expense, own-account transfer out, family transfer out
@@ -88,6 +89,17 @@ export function accountBalance(acc) {
   }
   return bal;
 }
+
+/** What one person holds: Online + Cash, from opening balances and entries (optionally as of a date). */
+export function inHand(ownerId, upTo = null) {
+  const of = (kind) => { const a = db.get('accounts', `acc-${ownerId}-${kind}`); return a ? accountBalance(a, upTo) : 0; };
+  const online = of('online');
+  const cash = of('cash');
+  return { online, cash, total: online + cash };
+}
+
+/** Everyone's Online + Cash together: the balance the entries say the family has. */
+export const inHandAll = (upTo = null) => FAMILY.reduce((s, f) => s + inHand(f.id, upTo).total, 0);
 
 export async function addAccount({ name, type, openingBalance }) {
   return db.put('accounts', { ...base(cfg.memberId), name: name.trim(), type, openingBalance: Number(openingBalance) || 0, archived: false });

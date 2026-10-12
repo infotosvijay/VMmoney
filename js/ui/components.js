@@ -11,6 +11,8 @@ export const cssVar = (n) => getComputedStyle(document.documentElement).getPrope
 export const $ = (s, r = document) => r.querySelector(s);
 export const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 export const money = (n) => fmtMoney(n, cfg.currency || 'INR');
+/** Same as money() but drops ".00" for whole amounts, for tight spaces. */
+export const moneyC = (n) => (Number.isInteger(Math.round((n || 0) * 100) / 100) ? new Intl.NumberFormat('en-IN', { style: 'currency', currency: cfg.currency || 'INR', maximumFractionDigits: 0 }).format(n || 0) : money(n));
 export { esc };
 
 export function toast(msg, { action, onAction, timeout = 3500 } = {}) {

@@ -7,7 +7,7 @@ import * as cats from '../categories.js';
 import * as tx from '../transactions.js';
 import * as recurring from '../recurring.js';
 import * as reports from '../reports.js';
-import { installBanner, syncReminder, $, $$, money, toast, confirmDialog, promptDialog, empty, download, compressImage, drawChart, cssVar, sheet, memberOptions } from './components.js';
+import { installBanner, syncReminder, moneyC, $, $$, money, toast, confirmDialog, promptDialog, empty, download, compressImage, drawChart, cssVar, sheet, memberOptions } from './components.js';
 
 // ---------------------------------------------------------------- rows
 
@@ -303,9 +303,11 @@ export async function transactionsScreen(root, ctx) {
   compute();
 
   const fsumText = () => 'Filters' + (activeCount ? ` (${activeCount} on)` : '');
+  // Balance in hand (Online + Cash) is always shown on your own list, whatever the filters, so it can be checked here.
+  const balanceNow = !hub && view.w === 'me' ? tx.inHand(cfg.memberId).total : null;
   const bottomHTML = () => `
-        <span class="muted small">${list.length} entries · <span class="income num">+${money(tot.income)}</span> · <span class="expense num">−${money(tot.expense)}</span></span>
-        <span class="row">${activeCount ? '<button class="btn small" data-clear>✕ Clear filters</button>' : ''}<button class="btn small" data-csv>⬇ CSV</button>${hub ? '<button class="btn small" data-bulk disabled>Recategorize</button>' : ''}</span>
+        <span class="sumline small"><span title="Entries">🧾 ${list.length}</span><span class="income num" title="Income">+${moneyC(tot.income)}</span><span class="expense num" title="Spending">−${moneyC(tot.expense)}</span>${balanceNow != null ? `<span class="balchip num ${balanceNow < 0 ? 'expense' : ''}" title="Balance in hand">Bal ${moneyC(balanceNow)}</span>` : ''}</span>
+        <span class="row">${activeCount ? '<button class="btn small" data-clear>✕ Clear filters</button>' : ''}${hub ? '<button class="btn small" data-csv>⬇ CSV</button><button class="btn small" data-bulk disabled>Recategorize</button>' : ''}</span>
 `;
   const resultsHTML = () => `
     ${list.length ? (hub ? hubTable(page) : groupedList(page, { showMember: scope === 'all' })) : empty('No entries here.', activeCount ? 'Nothing matches these filters. Tap <b>Clear filters</b> above.' : 'Tap the blue <b>＋</b> below to add one, or try another month.')}
