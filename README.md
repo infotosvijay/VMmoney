@@ -118,8 +118,12 @@ Both methods use the same merge rules, so mix them freely. Importing the same fi
   If the phone is lost with no backup, the laptop can recreate it: **Members → Export data** for that person.
 - **Laptop:** the app auto-saves `family.json`. To restore on a fresh browser choose **Restore from a backup file**
   at first launch (Chrome/Edge reopen the file directly; other browsers pick a copy).
+- **Bring old history to a phone:** import the CSV on the laptop (*Settings → Import old entries (CSV)*; a `Member` column
+  of VJ or MM decides whose entries they are), then run **Live sync** from that person's phone: their entries come back to the phone.
+  Without live sync, use *Members → Export data* on the laptop and *Sync → Import a file* on the phone.
+  Keep personal CSV/Excel files out of the GitHub repo.
 - **Old entries from a spreadsheet:** *Settings → Import old entries (CSV)* with columns
-  Date, Type, Category, Subcategory, Amount, Account (Online or Cash), Note.
+  Date, Time (optional), Member (optional), Type, Category, Subcategory, Amount, Account (Online or Cash), To account (transfers), Note.
 
 ---
 

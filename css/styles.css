@@ -288,3 +288,15 @@ dialog.sheet::backdrop { background: rgba(0,0,0,.45); }
 .more-filters > summary { cursor: pointer; color: var(--brand); font-size: .88rem; padding: 6px 0; list-style: none; }
 .more-filters > summary::before { content: '▸ '; } .more-filters[open] > summary::before { content: '▾ '; }
 .more-filters .filters { margin: 6px 0 0; }
+
+/* ---------- stats: income/expense tabs, ranked list ---------- */
+.tabs2 { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line); }
+.tabs2 button { background: none; border: 0; border-bottom: 3px solid transparent; padding: 12px 6px; text-align: center; color: var(--muted); font-size: .95rem; display: flex; flex-direction: column; gap: 2px; }
+.tabs2 button b { font-size: 1.15rem; }
+.tabs2 button.on { border-bottom-color: var(--plus); color: var(--text); font-weight: 600; }
+.rank { display: flex; align-items: center; gap: 10px; padding: 11px 2px; border-bottom: 1px solid var(--line); text-decoration: none; color: inherit; cursor: pointer; }
+.rank:last-of-type { border-bottom: 0; }
+.rank .pct { min-width: 46px; text-align: center; color: #fff; font-weight: 700; font-size: .78rem; padding: 5px 0; border-radius: 8px; flex: none; text-shadow: 0 1px 1px rgba(0,0,0,.25); }
+.rank .delta { min-width: 52px; text-align: right; }
+.rank.sel { background: var(--brand-soft); border-radius: 8px; }
+.sel-row td { background: var(--brand-soft); }

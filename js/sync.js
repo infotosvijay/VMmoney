@@ -182,7 +182,11 @@ export function lastSyncAt(memberId) {
 
 // ---------- hub -> phones: family package ----------
 
-export async function buildFamilyPackage({ includeSummary = true } = {}) {
+/**
+ * `ownFor` (live sync): also return that member's own records changed after `since`, so entries imported or
+ * recategorised on the hub reach their phone. null `since` means everything.
+ */
+export async function buildFamilyPackage({ includeSummary = true, ownFor = null, since = null } = {}) {
   const records = {
     categories: db.all('categories'),
     budgets: db.all('budgets'),
@@ -190,6 +194,10 @@ export async function buildFamilyPackage({ includeSummary = true } = {}) {
     holdings: db.all('holdings'),
   };
   if (includeSummary) records.summary = reports.buildFamilySummary();
+  if (ownFor) {
+    const mine = (s) => db.all(s).filter((r) => r.ownerId === ownFor && (!since || r.updatedAt > since));
+    records.own = { transactions: mine('transactions'), accounts: mine('accounts'), recurring: mine('recurring') };
+  }
   const pkg = await envelope('family', records);
   return { pkg, fileName: `mm-family-${stamp()}.json`, count: records.categories.length + records.budgets.length + records.holdings.length };
 }
@@ -197,7 +205,12 @@ export async function buildFamilyPackage({ includeSummary = true } = {}) {
 export function previewFamilyPackage(pkg) {
   if (pkg.packageType !== 'family') throw new Error(`${pkg.fileName || 'File'}: expected a family package`);
   const r = pkg.records;
-  return { pkg, plans: [planMerge('categories', r.categories), planMerge('budgets', r.budgets), planMerge('members', r.members), planMerge('holdings', r.holdings)], hasSummary: !!r.summary };
+  const own = (s) => planMerge(s, r.own?.[s], (rec) => rec.ownerId === cfg.memberId);
+  return {
+    pkg, hasSummary: !!r.summary,
+    plans: [planMerge('categories', r.categories), planMerge('budgets', r.budgets), planMerge('members', r.members), planMerge('holdings', r.holdings),
+      own('accounts'), own('transactions'), own('recurring')],
+  };
 }
 
 export async function applyFamilyPackage(preview) {

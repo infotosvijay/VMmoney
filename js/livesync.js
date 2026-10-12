@@ -103,7 +103,7 @@ export async function hostSession(ui) {
     }
     pkg.fileName = 'live sync';
     const applied = await sync.applyMemberPackage(preview);
-    const fam = await sync.buildFamilyPackage({ includeSummary: true });
+    const fam = await sync.buildFamilyPackage({ includeSummary: true, ownFor: pkg.fromMemberId, since: pkg.full ? null : pkg.since });
     conn.send({ t: 'family', pkg: fam.pkg, applied });
     await inbox.next('done', STEP_TIMEOUT_MS).catch(() => {});
     ui.status(`Synced with ${preview.name}: ${applied} records received, family update sent.`, 'done');
@@ -167,7 +167,8 @@ export async function syncWithHub(code, onStatus = () => {}) {
           await sync.commitExport({ fileName: 'live sync', count: built.count, createdAt: built.pkg.createdAt });
           succeeded = true;
           conn.send({ t: 'done' });
-          setTimeout(() => finish(null, { sent: built.count, received: fam.records.categories?.length ?? 0 }), 300);
+          const restored = (fam.records.own?.transactions || []).filter((t) => !t.deleted).length;
+          setTimeout(() => finish(null, { sent: built.count, restored }), 300);
         } catch (e) { finish(e); }
       });
     });

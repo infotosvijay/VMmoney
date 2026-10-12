@@ -12,6 +12,7 @@ import * as live from '../livesync.js';
 import { installBanner, syncReminder, $, money, toast, confirmDialog, promptDialog, pickFiles, shareOrDownload, empty, progress, relTime, daysSince, sheet } from './components.js';
 import { txRow, entryScreen, transactionsScreen, reportsScreen } from './shared-screens.js';
 import { positionScreen, positionCard } from './position-screens.js';
+import { categoryDetailScreen, categoryTitle, categoryBack } from './stats-screens.js';
 import { categoriesScreen, budgetsScreen, accountsScreen, recurringScreen, settingsScreen } from './settings-screens.js';
 
 // ---------------------------------------------------------------- shared bits
@@ -119,7 +120,7 @@ async function syncScreen(root, ctx) {
     btn.disabled = true;
     try {
       const r = await live.syncWithHub($('#code', root).value.replace(/\D/g, ''), (t) => { msg.textContent = t; });
-      toast(`Synced: ${r.sent} records sent, family update received`);
+      toast(`Synced: ${r.sent} sent${r.restored ? `, ${r.restored} entries brought back from the laptop` : ''}, family update received`);
       ctx.refresh();
     } catch (err) { msg.textContent = err.message; msg.className = 'small danger-text'; btn.disabled = false; }
   }
@@ -168,6 +169,7 @@ export const memberRoutes = {
   add: { title: (c) => (c.params.get('id') ? 'Edit entry' : 'Add entry'), render: entryScreen },
   position: { title: 'Balances', render: positionScreen },
   reports: { title: 'Reports', render: (r, c) => reportsScreen(r, c, { scope: 'mine' }) },
+  category: { title: categoryTitle, render: categoryDetailScreen, back: categoryBack, navId: 'reports' },
   budgets: { title: 'Budgets', render: (r, c) => budgetsScreen(r, c, { hub: false }) },
   family: { title: 'Family view', render: familyScreen },
   sync: { title: 'Sync with Hub', render: syncScreen },

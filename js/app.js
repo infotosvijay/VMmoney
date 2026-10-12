@@ -99,7 +99,7 @@ async function render() {
   destroyCharts();
   const title = typeof def.title === 'function' ? def.title(ctx) : def.title;
   const logo = !def.back && (id === current.home) ? '<img class="top-logo" src="icons/logo-160.png" alt="" width="24" height="31">' : '';
-  $('#topbar').innerHTML = `${logo}${def.back ? `<a class="btn small" href="#/${def.back}" aria-label="Back">←</a>` : ''}<h1>${esc(title)}</h1>${def.topAction ? def.topAction(ctx) : ''}`;
+  $('#topbar').innerHTML = `${logo}${def.back ? `<a class="btn small" href="#/${typeof def.back === 'function' ? def.back(ctx) : def.back}" aria-label="Back">←</a>` : ''}<h1>${esc(title)}</h1>${def.topAction ? def.topAction(ctx) : ''}`;
   document.title = `${title} · VM Money`;
   view.innerHTML = '';
   try {

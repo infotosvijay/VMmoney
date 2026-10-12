@@ -8,7 +8,7 @@ const ASSETS = [
   './js/version.js', './js/app.js', './js/db.js', './js/models.js', './js/categories.js',
   './js/transactions.js', './js/budgets.js', './js/recurring.js', './js/reports.js',
   './js/holdings.js', './js/csvimport.js', './js/sync.js', './js/livesync.js', './js/hubfile.js', './js/lock.js',
-  './js/ui/components.js', './js/ui/shared-screens.js', './js/ui/position-screens.js', './js/ui/settings-screens.js', './js/ui/member-screens.js', './js/ui/hub-screens.js',
+  './js/ui/components.js', './js/ui/shared-screens.js', './js/ui/position-screens.js', './js/ui/stats-screens.js', './js/ui/settings-screens.js', './js/ui/member-screens.js', './js/ui/hub-screens.js',
   './js/vendor/chart.min.js', './js/vendor/peerjs.min.js',
   './icons/icon-192.png', './icons/apple-touch-icon.png', './icons/logo-160.png', './icons/icon-512.png', './icons/icon-maskable-512.png'
 ];

@@ -13,6 +13,7 @@ import * as live from '../livesync.js';
 import { $, $$, money, toast, confirmDialog, promptDialog, pickFiles, shareOrDownload, empty, progress, relTime, daysSince, drawChart, cssVar, sheet } from './components.js';
 import { entryScreen, transactionsScreen, reportsScreen } from './shared-screens.js';
 import { positionScreen, positionCard } from './position-screens.js';
+import { categoryDetailScreen, categoryTitle, categoryBack } from './stats-screens.js';
 import { categoriesScreen, budgetsScreen, accountsScreen, recurringScreen, settingsScreen } from './settings-screens.js';
 
 const askPw = (n) => promptDialog({ title: 'Password needed', label: `Password for ${n}`, type: 'password', okText: 'Open' });
@@ -270,6 +271,7 @@ export const hubRoutes = {
   position: { title: 'Balances', render: positionScreen },
   reports: { title: 'Family reports', render: (r, c) => reportsScreen(r, c, { scope: 'all' }) },
   live: { title: 'Live sync', render: liveScreen },
+  category: { title: categoryTitle, render: categoryDetailScreen, back: categoryBack, navId: 'reports' },
   import: { title: 'Import center', render: importScreen },
   categories: { title: 'Master categories', render: (r, c) => categoriesScreen(r, c, { hub: true }) },
   budgets: { title: 'Budgets', render: (r, c) => budgetsScreen(r, c, { hub: true }) },

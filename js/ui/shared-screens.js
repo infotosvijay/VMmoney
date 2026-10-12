@@ -383,26 +383,35 @@ export async function reportsScreen(root, ctx, { scope }) {
   const P = ctx.params;
   const mode = P.get('p') === 'year' ? 'year' : 'month';
   const d = P.get('d') || (mode === 'year' ? thisMonth().slice(0, 4) : thisMonth());
+  const kind = P.get('k') === 'income' ? 'income' : 'expense';
   const go = (patch) => {
-    const n = { p: mode, d, ...patch };
-    history.replaceState(null, '', `#/reports?p=${n.p}&d=${n.d}`);
+    const n = { p: mode, d, k: kind, ...patch };
+    history.replaceState(null, '', `#/reports?p=${n.p}&d=${n.d}&k=${n.k}`);
     ctx.refresh();
   };
-  const range = mode === 'year' ? { from: `${d}-01-01`, to: `${d}-12-31` } : monthRange(d);
-  const list = tx.query({ scope, ...range });
+  const rangeOf = (x) => (mode === 'year' ? { from: `${x}-01-01`, to: `${x}-12-31` } : monthRange(x));
+  const prevKey = mode === 'year' ? String(Number(d) - 1) : addMonths(d, -1);
+  const list = tx.query({ scope, ...rangeOf(d) });
   const tot = reports.totals(list);
-  const exp = reports.byCategory(list, 'expense');
-  const inc = reports.byCategory(list, 'income');
+  const rows = reports.byCategory(list, kind);
+  const prevRows = new Map(reports.byCategory(tx.query({ scope, ...rangeOf(prevKey) }), kind).map((r) => [r.id, r.total]));
+  const kindTotal = kind === 'expense' ? tot.expense : tot.income;
   const label = mode === 'year' ? d : monthLabel(d);
+  const prevLabel = mode === 'year' ? prevKey : monthLabel(prevKey, false);
   const trendEnd = mode === 'year' ? `${d}-12` : d;
   const trend = reports.monthlyTrend(tx.query({ scope }), mode === 'year' ? 12 : 6, trendEnd);
   const members = hub ? reports.byMember(list) : [];
-  const link = (cid, type) => `#/transactions?m=${d}&c=${cats.get(cid)?.parentId ? 's' : 'c'}:${cid}&t=${type}`;
+  const detail = (id) => `#/category?c=${encodeURIComponent(id)}&d=${d}&p=${mode}&t=${kind}`;
 
-  const catTable = (rows, type) => rows.length ? `<table class="tbl drill"><thead><tr><th>Category</th><th class="r">Amount</th><th class="r">Share</th></tr></thead><tbody>
-    ${rows.map((c) => `<tr data-toggle="${esc(c.id)}"><td>${c.subs.length > 1 || c.subs[0]?.id !== 'none' ? '▸ ' : ''}${esc(c.icon)} ${esc(c.name)} <span class="muted small">(${c.count})</span>${c.id !== 'none' ? ` <a class="small" href="${link(c.id, type)}">view</a>` : ''}</td><td class="r num">${money(c.total)}</td><td class="r num">${Math.round((c.total / (type === 'expense' ? tot.expense : tot.income)) * 100)}%</td></tr>
-    ${c.subs.map((s) => `<tr class="sub-row" data-parent="${esc(c.id)}" hidden><td>${esc(s.name)} <span class="muted small">(${s.count})</span></td><td class="r num">${money(s.total)}</td><td class="r"><a href="${s.id === 'none' ? `#/transactions?m=${d}&c=c:${esc(c.id)}&t=${type}` : link(s.id, type)}">view</a></td></tr>`).join('')}`).join('')}
-  </tbody></table>` : '<p class="muted">Nothing recorded.</p>';
+  const delta = (r) => {
+    const before = prevRows.get(r.id);
+    if (before == null) return '<span class="muted small">new</span>';
+    if (!before) return '';
+    const pct = Math.round(((r.total - before) / before) * 100);
+    if (!pct) return '<span class="muted small">–</span>';
+    const bad = kind === 'expense' ? pct > 0 : pct < 0;
+    return `<span class="small ${bad ? 'expense' : 'income'}" title="vs ${esc(prevLabel)}">${pct > 0 ? '▲' : '▼'} ${Math.abs(pct)}%</span>`;
+  };
 
   root.innerHTML = `
     <div class="row between no-print" style="margin-bottom:12px">
@@ -411,19 +420,22 @@ export async function reportsScreen(root, ctx, { scope }) {
       <div class="row"><button class="btn small" data-csv>⬇ CSV</button><button class="btn small" data-print>🖨 PDF</button></div>
     </div>
     <h2 class="muted small" style="display:none" id="print-title">${hub ? 'Family' : esc(cfg.memberName)} report: ${esc(label)}</h2>
-    <div class="grid stats">
-      <div class="card stat"><div class="label">Income</div><div class="value income">${money(tot.income)}</div></div>
-      <div class="card stat"><div class="label">Expense</div><div class="value expense">${money(tot.expense)}</div></div>
-      <div class="card stat"><div class="label">Saved</div><div class="value ${tot.net >= 0 ? 'income' : 'expense'}">${money(tot.net)}</div></div>
-      <div class="card stat"><div class="label">Savings rate</div><div class="value">${tot.income ? Math.round((tot.net / tot.income) * 100) : 0}%</div></div>
+    <div class="tabs2" role="tablist">
+      <button data-k="income" class="${kind === 'income' ? 'on' : ''}" role="tab">Income <b class="num income">${money(tot.income)}</b></button>
+      <button data-k="expense" class="${kind === 'expense' ? 'on' : ''}" role="tab">Expenses <b class="num expense">${money(tot.expense)}</b></button>
     </div>
+    <div class="row small muted" style="margin:6px 2px 12px">Saved <b class="num ${tot.net >= 0 ? 'income' : 'expense'}">${money(tot.net)}</b> · Savings rate <b>${tot.income ? Math.round((tot.net / tot.income) * 100) : 0}%</b></div>
+
     <div class="grid two">
-      <div class="card"><h2>Where the money went</h2>${exp.length ? '<div class="chart-box"><canvas id="c-cat" aria-label="Expense by category"></canvas></div>' : '<p class="muted">No expenses in this period.</p>'}</div>
+      <div class="card"><h2>${kind === 'expense' ? 'Where the money went' : 'Where it came from'}</h2>${rows.length ? '<div class="chart-box"><canvas id="c-cat" aria-label="By category"></canvas></div>' : `<p class="muted">No ${kind} in this period.</p>`}</div>
       <div class="card"><h2>${mode === 'year' ? '12-month trend' : '6-month trend'}</h2><div class="chart-box"><canvas id="c-trend" aria-label="Trend"></canvas></div></div>
     </div>
-    <div class="grid two">
-      <div class="card"><h2>Expenses by category</h2><p class="muted small no-print">Tap a category to see its subcategories.</p>${catTable(exp, 'expense')}</div>
-      <div class="card"><h2>Income by category</h2>${catTable(inc, 'income')}</div>
+
+    <div class="card" style="padding:6px 12px">
+      <div class="card-head" style="padding-top:8px"><h2>${kind === 'expense' ? 'Expenses' : 'Income'} by category</h2><span class="muted small">vs ${esc(prevLabel)}</span></div>
+      ${rows.length ? rows.map((r) => `<a class="rank link" href="${detail(r.id)}"><span class="pct" style="background:${esc(r.color)}">${Math.round((r.total / (kindTotal || 1)) * 100)}%</span>
+        <span class="grow">${esc(r.icon)} ${esc(r.name)} <span class="muted small">(${r.count})</span></span><span class="num">${money(r.total)}</span><span class="delta">${delta(r)}</span></a>`).join('') : '<p class="muted">Nothing recorded.</p>'}
+      <p class="muted small no-print" style="margin:8px 2px">Tap a category for its subcategories, month-by-month history and daily entries.</p>
     </div>
     ${hub ? `<div class="card"><h2>Member comparison</h2>${members.length ? `<div class="chart-box"><canvas id="c-mem" aria-label="Members"></canvas></div>
       <table class="tbl"><thead><tr><th>Member</th><th class="r">Income</th><th class="r">Expense</th></tr></thead><tbody>${members.map((m) => `<tr><td><span class="dot" style="background:${esc(m.color)}"></span> ${esc(m.name)}</td><td class="r num income">${money(m.income)}</td><td class="r num expense">${money(m.expense)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No data.</p>'}</div>` : ''}
@@ -432,17 +444,16 @@ export async function reportsScreen(root, ctx, { scope }) {
   root.onclick = (e) => {
     const b = e.target.closest('button');
     if (b?.dataset.p) return go({ p: b.dataset.p, d: b.dataset.p === 'year' ? d.slice(0, 4) : mode === 'year' ? `${d}-${thisMonth().slice(5)}` : d });
+    if (b?.dataset.k) return go({ k: b.dataset.k });
     if (b?.dataset.nav) return go({ d: mode === 'year' ? String(Number(d) + Number(b.dataset.nav)) : addMonths(d, Number(b.dataset.nav)) });
     if (b && 'csv' in b.dataset) return download(`mm-report-${d}.csv`, reports.toCSV(list), 'text/csv');
-    if (b && 'print' in b.dataset) { $('#print-title', root).style.display = 'block'; window.print(); return; }
-    const tr = e.target.closest('tr[data-toggle]');
-    if (tr) $$(`tr[data-parent="${CSS.escape(tr.dataset.toggle)}"]`, root).forEach((r) => { r.hidden = !r.hidden; });
+    if (b && 'print' in b.dataset) { $('#print-title', root).style.display = 'block'; window.print(); }
   };
 
   const ink = { income: cssVar('--income'), expense: cssVar('--expense') };
-  if (exp.length) {
-    const top = exp.slice(0, 10);
-    const rest = exp.slice(10).reduce((s, c) => s + c.total, 0);
+  if (rows.length) {
+    const top = rows.slice(0, 10);
+    const rest = rows.slice(10).reduce((s, c) => s + c.total, 0);
     drawChart($('#c-cat', root), {
       type: 'doughnut',
       data: { labels: [...top.map((c) => c.name), ...(rest ? ['Other'] : [])], datasets: [{ data: [...top.map((c) => c.total), ...(rest ? [rest] : [])], backgroundColor: [...top.map((c) => c.color), ...(rest ? ['#94a3b8'] : [])], borderWidth: 0 }] },

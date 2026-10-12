@@ -50,6 +50,7 @@ const parseAmount = (s) => {
 
 const HEADS = {
   date: ['date', 'txn date', 'transaction date'], member: ['member', 'person', 'owner'], type: ['type', 'dr/cr'],
+  time: ['time'], toaccount: ['to account', 'toaccount', 'to'],
   category: ['category'], sub: ['subcategory', 'sub category', 'sub-category'], amount: ['amount', 'amt', 'value'],
   account: ['account', 'bank'], mode: ['payment mode', 'paymentmode', 'mode'], note: ['note', 'notes', 'description', 'narration', 'remarks'], tags: ['tags'],
 };
@@ -68,10 +69,13 @@ const typeOf = (s) => {
   return 'expense';
 };
 
+// Compare names ignoring case, extra spaces and emoji variation selectors (so "VJ 🏍 petrol ⛽️" matches "VJ 🏍️ petrol ⛽").
+const norm = (s) => String(s || '').replace(/️/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+
 function findCat(name, type, parentId) {
-  const n = String(name || '').trim().toLowerCase();
+  const n = norm(name);
   if (!n) return null;
-  return db.live('categories').find((c) => c.type === type && (c.parentId || null) === (parentId || null) && c.name.toLowerCase() === n) || null;
+  return db.live('categories').find((c) => c.type === type && (c.parentId || null) === (parentId || null) && norm(c.name) === n) || null;
 }
 
 /** Dry run: returns what would be imported, skipped and created. Nothing is written. */
@@ -105,7 +109,9 @@ export function planImport(text) {
     const note = get(r, 'note');
     if (existing.has(keyOf(owner, date, type, amount, note))) { plan.duplicates++; return; }
     const catName = get(r, 'category'), subName = get(r, 'sub');
-    const item = { owner, date, type, amount, note, catName, subName, accountName: get(r, 'account'), mode: get(r, 'mode').toLowerCase(), tags: get(r, 'tags') };
+    const item = { owner, date, type, amount, note, catName, subName, accountName: get(r, 'account'), toAccountName: get(r, 'toaccount'), time: get(r, 'time'), mode: get(r, 'mode').toLowerCase(), tags: get(r, 'tags') };
+    const kindOf = (n) => (/cash/i.test(n) ? 'cash' : 'online');
+    if (type === 'transfer' && kindOf(item.accountName) === kindOf(item.toAccountName)) return plan.skipped.push({ line, reason: 'transfer needs two different accounts' });
     if (type !== 'transfer' && catName && !findCat(catName, type, null)) plan.newCategories.add(`${type}: ${catName}`);
     plan.items.push(item);
   });
@@ -115,32 +121,35 @@ export function planImport(text) {
 const keyOf = (owner, date, type, amount, note) => `${owner}|${date}|${type}|${Number(amount).toFixed(2)}|${String(note || '').trim().toLowerCase()}`;
 
 export async function applyImport(plan) {
-  const fallback = tx.onlineAccount()?.id || null;
   const made = new Map();
   let n = 0;
   for (const it of plan.items) {
     let categoryId = null, subcategoryId = null;
     if (it.type !== 'transfer') {
-      const ck = `${it.type}|${it.catName.toLowerCase()}`;
+      const ck = `${it.type}|${norm(it.catName)}`;
       let c = it.catName ? (made.get(ck) || findCat(it.catName, it.type, null)) : null;
       if (it.catName && !c) { c = await cats.create({ name: it.catName, type: it.type }); made.set(ck, c); }
       if (!c) c = cats.get(it.type === 'income' ? 'cat-income-other-income' : 'cat-expense-other');
       categoryId = c?.id || null;
       if (c && it.subName) {
-        const sk = `${ck}|${it.subName.toLowerCase()}`;
+        const sk = `${ck}|${norm(it.subName)}`;
         let s = made.get(sk) || findCat(it.subName, it.type, c.id);
         if (!s) { s = await cats.create({ name: it.subName, type: it.type, parentId: c.id }); made.set(sk, s); }
         subcategoryId = s.id;
       }
     }
-    const wantCash = /cash/i.test(it.accountName) || (!it.accountName && it.mode === 'cash');
-    const acc = wantCash ? tx.cashAccount() : tx.onlineAccount();
-    await tx.add({
+    const kindOf = (name, mode) => (/cash/i.test(name) || (!name && mode === 'cash') ? 'cash' : 'online');
+    const from = await tx.accountFor(it.owner, kindOf(it.accountName, it.mode));
+    const to = it.type === 'transfer' ? await tx.accountFor(it.owner, kindOf(it.toAccountName, '')) : null;
+    const data = {
       ownerId: it.owner, type: it.type, amount: it.amount, date: it.date, note: it.note,
-      categoryId, subcategoryId, accountId: acc?.id || fallback,
-      paymentMode: wantCash ? 'cash' : 'online',
+      categoryId, subcategoryId, accountId: from.id, toAccountId: to?.id || null,
+      paymentMode: from.type === 'cash' ? 'cash' : 'online',
       tags: it.tags.split(/[\s,]+/).filter(Boolean).map((t) => (t.startsWith('#') ? t : `#${t}`)),
-    }, { silent: true });
+    };
+    const when = it.time && new Date(`${it.date}T${it.time}`);
+    if (when && !Number.isNaN(when.getTime())) data.createdAt = when.toISOString(); // keeps same-day entries in their original order
+    await tx.add(data);
     n++;
   }
   await db.setCfg('lastCsvImportAt', localDate());

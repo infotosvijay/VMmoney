@@ -49,6 +49,14 @@ export const myAccounts = ({ includeArchived = false } = {}) =>
     .filter((a) => a.ownerId === cfg.memberId && (includeArchived || !a.archived))
     .sort((a, b) => (ACC_ORDER[accKey(a)] ?? 9) - (ACC_ORDER[accKey(b)] ?? 9));
 
+/** Online / Cash account of any member, created on demand (e.g. the hub importing VJ's old entries). */
+export async function accountFor(ownerId, kind) {
+  const id = `acc-${ownerId}-${kind}`;
+  const cur = db.get('accounts', id);
+  if (cur) return cur;
+  return db.put('accounts', { ...base(ownerId), id, name: kind === 'cash' ? 'Cash' : 'Online', type: kind === 'cash' ? 'cash' : 'bank', openingBalance: 0, archived: false }, { silent: true });
+}
+
 export const onlineAccount = () => db.get('accounts', `acc-${cfg.memberId}-online`);
 export const cashAccount = () => db.get('accounts', `acc-${cfg.memberId}-cash`);
 
