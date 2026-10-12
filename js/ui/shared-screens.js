@@ -314,8 +314,29 @@ export async function transactionsScreen(root, ctx) {
   const fsumText = () => 'Filters' + (activeCount ? ` (${activeCount} on)` : '');
   // Balance in hand (Online + Cash) is always shown on your own list, whatever the filters, so it can be checked here.
   const balanceNow = hub || view.w === 'all' ? tx.inHandAll() : tx.inHand(view.w === 'other' ? view.memberId : cfg.memberId).total;
+  // On one person's own tab (Mine / MM) the income figure is that person's income AFTER transfers between VJ and MM:
+  // own income + money received from the other person - money sent to them. So a salary of 2,57,295 with 15,770
+  // sent to MM shows 2,41,525, and MM (no salary, 15,770 received) shows 15,770 instead of 0.
+  // The Family tab and the laptop show the plain income and spending (a transfer inside the family nets to zero).
+  const ownTab = !hub && view.w !== 'all';
+  const incomeAfterTransfers = () => {
+    const p = view.w === 'other' ? view.memberId : cfg.memberId;
+    let v = tot.income;
+    for (const t of list) {
+      if (t.type !== 'transfer' || !t.toMemberId) continue;
+      const incoming = (t.direction === 'out' && t.toMemberId === p) || (t.direction === 'in' && t.ownerId === p);
+      v += incoming ? t.amount : -t.amount;
+    }
+    return v;
+  };
+  const totalsHTML = () => {
+    const exp = `<span class="expense num" title="Spending">−${moneyC(tot.expense)}</span>`;
+    if (!ownTab) return `<span class="income num" title="Income">+${moneyC(tot.income)}</span>` + exp;
+    const v = incomeAfterTransfers();
+    return `<span class="${v < 0 ? 'expense' : 'income'} num" title="Income after transfers">${v < 0 ? '−' : '+'}${moneyC(Math.abs(v))}</span>` + exp;
+  };
   const bottomHTML = () => `
-        <span class="sumline small"><span title="Entries">🧾 ${list.length}</span><span class="income num" title="Income">+${moneyC(tot.income)}</span><span class="expense num" title="Spending">−${moneyC(tot.expense)}</span>${balanceNow != null ? `<span class="balchip num ${balanceNow < 0 ? 'expense' : ''}" title="Balance in hand">Bal ${moneyC(balanceNow)}</span>` : ''}</span>
+        <span class="sumline small"><span title="Entries">🧾 ${list.length}</span>${totalsHTML()}${balanceNow != null ? `<span class="balchip num ${balanceNow < 0 ? 'expense' : ''}" title="Balance in hand">Bal ${moneyC(balanceNow)}</span>` : ''}</span>
         <span class="row">${activeCount ? '<button class="btn small" data-clear>✕ Clear filters</button>' : ''}${hub ? '<button class="btn small" data-csv>⬇ CSV</button><button class="btn small" data-bulk disabled>Recategorize</button>' : ''}</span>
 `;
   const resultsHTML = () => `

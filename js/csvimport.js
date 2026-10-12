@@ -111,6 +111,7 @@ export function planImport(text) {
     const catName = get(r, 'category'), subName = get(r, 'sub');
     const item = { owner, date, type, amount, note, catName, subName, accountName: get(r, 'account'), toAccountName: get(r, 'toaccount'), time: get(r, 'time'), mode: get(r, 'mode').toLowerCase(), tags: get(r, 'tags') };
     const kindOf = (n) => (/cash/i.test(n) ? 'cash' : 'online');
+    if (type === 'transfer' && !item.toAccountName) return plan.skipped.push({ line, reason: 'transfer has no "To account"' });
     if (type === 'transfer' && kindOf(item.accountName) === kindOf(item.toAccountName)) return plan.skipped.push({ line, reason: 'transfer needs two different accounts' });
     if (type !== 'transfer' && catName && !findCat(catName, type, null)) plan.newCategories.add(`${type}: ${catName}`);
     plan.items.push(item);
