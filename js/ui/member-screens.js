@@ -30,15 +30,19 @@ function inHandCard() {
   const cash = tx.cashAccount();
   const o = on ? tx.accountBalance(on) : 0;
   const c = cash ? tx.accountBalance(cash) : 0;
-  const unset = !(on?.openingBalance) && !(cash?.openingBalance);
+  // Only nudge a brand-new user. Once income entries exist, the balance simply builds up from them.
+  const noIncome = !db.live('transactions').some((t) => t.ownerId === cfg.memberId && t.type === 'income');
+  const unset = noIncome && !(on?.openingBalance) && !(cash?.openingBalance);
   return `<div class="card">
-    <div class="card-head"><h2>Balance in hand</h2><a class="small" href="#/accounts">Opening balances ›</a></div>
+    <div class="card-head"><h2>Balance in hand</h2>${unset ? '<a class="small" href="#/accounts">Set opening balance ›</a>' : ''}</div>
     <div class="stat" style="padding:0"><div class="value ${o + c >= 0 ? 'income' : 'expense'}">${money(o + c)}</div></div>
     <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
       <div class="inhand"><span class="muted small">🏦 Online</span><b class="num ${o < 0 ? 'expense' : ''}">${money(o)}</b></div>
       <div class="inhand"><span class="muted small">💵 Cash</span><b class="num ${c < 0 ? 'expense' : ''}">${money(c)}</b></div>
     </div>
-    ${unset ? '<p class="muted small" style="margin:8px 0 0">Set your opening balances so this matches your bank and wallet.</p>' : ''}</div>`;
+    <p class="muted small" style="margin:8px 0 0">${unset
+      ? 'Add your income, or set an opening balance, to get started.'
+      : 'Built from all your income and expenses so far. Whatever is left carries into the next month automatically.'}</p></div>`;
 }
 
 function familyCard(month) {

@@ -277,6 +277,7 @@ export async function transactionsScreen(root, ctx) {
   const tot = reports.totals(list);
   const accounts = hub ? db.live('accounts') : tx.myAccounts({ includeArchived: true });
   const isMonth = /^\d{4}-\d{2}$/.test(f.m);
+  const activeCount = [f.q, f.t, f.c, f.a, f.u, f.min, f.max].filter(Boolean).length;
 
   if (hub) {
     const dir = sortState.dir;
@@ -297,7 +298,7 @@ export async function transactionsScreen(root, ctx) {
         <button class="btn small" data-allmonths>${f.m === 'all' ? 'This month' : 'All time'}</button>
       </div>
       <input id="q" type="search" placeholder="Search notes, tags…" value="${esc(f.q)}" aria-label="Search" style="margin-top:10px">
-      <details class="more-filters" ${f.t || f.c || f.a || f.u || f.min || f.max ? 'open' : ''}><summary>Filters</summary><div class="filters">
+      <details class="more-filters" ${activeCount ? 'open' : ''}><summary>Filters${activeCount ? ` (${activeCount} on)` : ''}</summary><div class="filters">
         <select id="ftype" aria-label="Type"><option value="">All types</option>${['expense', 'income', 'transfer'].map((t) => `<option value="${t}" ${f.t === t ? 'selected' : ''}>${t[0].toUpperCase() + t.slice(1)}</option>`).join('')}</select>
         <select id="fcat" aria-label="Category">${catFilterOptions(f.c)}</select>
         <select id="facc" aria-label="Account"><option value="">All accounts</option>${accounts.map((a) => `<option value="${esc(a.id)}" ${f.a === a.id ? 'selected' : ''}>${esc(a.name)}${hub ? ` (${esc(tx.memberName(a.ownerId))})` : ''}</option>`).join('')}</select>
@@ -307,10 +308,10 @@ export async function transactionsScreen(root, ctx) {
       </div></details>
       <div class="row between">
         <span class="muted small">${list.length} entries · <span class="income num">+${money(tot.income)}</span> · <span class="expense num">−${money(tot.expense)}</span></span>
-        <span class="row"><button class="btn small" data-csv>⬇ CSV</button>${hub ? '<button class="btn small" data-bulk disabled>Recategorize</button>' : ''}</span>
+        <span class="row">${activeCount ? '<button class="btn small" data-clear>✕ Clear filters</button>' : ''}<button class="btn small" data-csv>⬇ CSV</button>${hub ? '<button class="btn small" data-bulk disabled>Recategorize</button>' : ''}</span>
       </div>
     </div>
-    ${list.length ? (hub ? hubTable(page) : groupedList(page, { showMember: scope === 'all' })) : empty('No entries here.', 'Tap the blue <b>＋</b> below to add one, or try another month.')}
+    ${list.length ? (hub ? hubTable(page) : groupedList(page, { showMember: scope === 'all' })) : empty('No entries here.', activeCount ? 'Nothing matches these filters. Tap <b>Clear filters</b> above.' : 'Tap the blue <b>＋</b> below to add one, or try another month.')}
     ${list.length > shown ? `<button class="btn" style="width:100%" data-more-rows>Show ${Math.min(200, list.length - shown)} more (${list.length - shown} left)</button>` : ''}
   `;
 
@@ -334,7 +335,8 @@ export async function transactionsScreen(root, ctx) {
       return ctx.refresh();
     }
     if (!b) return;
-    if (b.dataset.w) setF({ w: b.dataset.w === 'me' ? '' : b.dataset.w });
+    if ('clear' in b.dataset) setF({ q: '', t: '', c: '', a: '', u: '', min: '', max: '' });
+    else if (b.dataset.w) setF({ w: b.dataset.w === 'me' ? '' : b.dataset.w });
     else if (b.dataset.mnav) setF({ m: addMonths(f.m, Number(b.dataset.mnav)) });
     else if ('allmonths' in b.dataset) setF({ m: f.m === 'all' ? thisMonth() : 'all' });
     else if ('moreRows' in b.dataset) { shown += 200; ctx.refresh(); }
