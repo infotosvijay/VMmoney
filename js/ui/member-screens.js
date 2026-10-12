@@ -31,9 +31,9 @@ function inHandCard(month) {
   const h = tx.inHand(cfg.memberId, upTo);
   const on = tx.onlineAccount();
   const cash = tx.cashAccount();
-  // Only nudge a brand-new user. Once income entries exist, the balance simply builds up from them.
-  const noIncome = !db.live('transactions').some((t) => t.ownerId === cfg.memberId && t.type === 'income');
-  const unset = noIncome && !(on?.openingBalance) && !(cash?.openingBalance);
+  // The opening-balance link only shows on a completely empty account (no entries, no transfers, no opening balance).
+  const unset = !db.live('transactions').some((t) => t.ownerId === cfg.memberId) && !tx.memberTransfers().length
+    && !(on?.openingBalance) && !(cash?.openingBalance);
   return `<div class="card">
     <div class="card-head"><h2>Balance in hand</h2>${unset ? '<a class="small" href="#/accounts">Set opening balance ›</a>' : ''}</div>
     <div class="stat" style="padding:0"><div class="value ${h.total >= 0 ? 'income' : 'expense'}" style="font-size:1.9rem">${money(h.total)}</div></div>
@@ -41,8 +41,7 @@ function inHandCard(month) {
       <div class="inhand"><span class="muted small">🏦 Online</span><b class="num ${h.online < 0 ? 'expense' : ''}">${money(h.online)}</b></div>
       <div class="inhand"><span class="muted small">💵 Cash</span><b class="num ${h.cash < 0 ? 'expense' : ''}">${money(h.cash)}</b></div>
     </div>
-    ${unset ? '<p class="muted small" style="margin:8px 0 0">Add your income, or set an opening balance, to get started.</p>'
-      : past ? `<p class="muted small" style="margin:8px 0 0">As it stood at the end of ${esc(monthLabel(month, false))}.</p>` : ''}</div>`;
+    ${past ? `<p class="muted small" style="margin:8px 0 0">As it stood at the end of ${esc(monthLabel(month, false))}.</p>` : ''}</div>`;
 }
 
 function familyCard(month) {

@@ -77,8 +77,25 @@ export async function ensureDefaultAccount() {
   if (!db.get('accounts', `acc-${cfg.memberId}-cash`)) await db.put('accounts', mk('cash', 'Cash', 'cash'), { silent: true });
 }
 
+/**
+ * A VJ <-> MM transfer that only ONE of you recorded still has to move BOTH balances, so nobody enters it twice.
+ * The person who didn't record it gets it in (or out of) their Online account. If both recorded it, each side is
+ * already booked in its own account and nothing is added here. Never counted as income or expense.
+ */
+function transferAdjust(ownerId, upTo) {
+  let amount = 0;
+  for (const e of transferEvents().events) {
+    if (upTo && e.date > upTo) continue;
+    if (e.ids.length > 1 || e.by === ownerId) continue;
+    if (e.to === ownerId) amount += e.amount; // the other person paid me
+    else if (e.from === ownerId) amount -= e.amount; // the other person recorded that I paid them
+  }
+  return amount;
+}
+
 export function accountBalance(acc, upTo = null) {
   let bal = Number(acc.openingBalance) || 0;
+  if (acc.id.endsWith('-online')) bal += transferAdjust(acc.ownerId, upTo);
   for (const t of db.live('transactions')) {
     if (upTo && t.date > upTo) continue; // balance as of a date
     if (t.accountId === acc.id) {

@@ -120,7 +120,7 @@ export async function entryScreen(root, ctx) {
         </div>
         ${isT ? `<div class="seg"><button type="button" data-xfer="own" class="${mT ? '' : 'on'}">Between my accounts</button><button type="button" data-xfer="member" class="${mT ? 'on' : ''}">With ${esc(other.name)}</button></div>
         ${mT ? `<div class="seg"><button type="button" data-dir="out" class="${st.direction === 'in' ? '' : 'on'}">I paid ${esc(other.name)}</button><button type="button" data-dir="in" class="${st.direction === 'in' ? 'on' : ''}">${esc(other.name)} paid me</button></div>
-        <p class="muted small">You can each record your own side. Two entries for the same amount on the same day (or a day apart) are matched and counted once between you. It never counts as income or expense.</p>` : ''}` : ''}
+        <p class="muted small">Record it once: the other person's balance goes up (or down, if they paid you) automatically. If you both record it (same amount, same or next day) it is counted once. It never counts as income or expense.</p>` : ''}` : ''}
         <label class="field"><span>Amount (${esc(cfg.currency || 'INR')})</span>
           <input id="amount" class="amount-input" inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(st.amount)}" ${existing ? '' : 'autofocus'}>
         </label>
