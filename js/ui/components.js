@@ -197,16 +197,16 @@ let pendingSlide = null;
 export const consumeSlide = () => { const d = pendingSlide; pendingSlide = null; return d; };
 
 /**
- * Horizontal swipe on `el`: calls handler('next') for a swipe left, handler('prev') for a swipe right.
+ * Horizontal swipe on `el`: calls handler('next', startElement) for a swipe left, handler('prev', startElement) for a swipe right.
  * Return false from the handler when there is nothing further in that direction.
  * Ignored when the swipe starts on a field, a table, or anything marked .no-swipe, and when it is mostly vertical.
  */
 export function onSwipe(el, handler, { min = 70 } = {}) {
   el.classList.add('swipeable'); // gives short pages enough height to swipe on
-  let x0 = 0, y0 = 0, t0 = 0, ok = false;
+  let x0 = 0, y0 = 0, t0 = 0, ok = false, startEl = null;
   el.addEventListener('touchstart', (e) => {
-    ok = e.touches.length === 1 && !e.target.closest('input, select, textarea, canvas, .table-wrap, .no-swipe');
-    if (ok) { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now(); }
+    ok = e.touches.length === 1 && !e.target.closest('input, select, textarea, .table-wrap, .no-swipe');
+    if (ok) { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now(); startEl = e.target; }
   }, { passive: true });
   el.addEventListener('touchend', (e) => {
     if (!ok) return;
@@ -215,6 +215,6 @@ export function onSwipe(el, handler, { min = 70 } = {}) {
     const dx = t.clientX - x0;
     const dy = t.clientY - y0;
     if (Date.now() - t0 > 700 || Math.abs(dx) < min || Math.abs(dy) > Math.abs(dx) * 0.6) return;
-    if (handler(dx < 0 ? 'next' : 'prev') !== false) pendingSlide = dx < 0 ? 'left' : 'right';
+    if (handler(dx < 0 ? 'next' : 'prev', startEl) !== false) pendingSlide = dx < 0 ? 'left' : 'right';
   }, { passive: true });
 }

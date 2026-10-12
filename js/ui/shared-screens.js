@@ -334,8 +334,8 @@ export async function transactionsScreen(root, ctx) {
         ${isMonth ? '<button class="btn small" data-mnav="1" aria-label="Next month">›</button>' : ''}
         <button class="btn small" data-allmonths>${f.m === 'all' ? 'This month' : 'All time'}</button>
       </div>
-      <input id="q" type="search" placeholder="Search notes, tags…" value="${esc(f.q)}" aria-label="Search" style="margin-top:10px">
       <details class="more-filters" ${activeCount ? 'open' : ''}><summary id="fsum">${fsumText()}</summary><div class="filters">
+        <input id="q" type="search" placeholder="Search notes, tags…" value="${esc(f.q)}" aria-label="Search" style="grid-column:1/-1">
         <select id="ftype" aria-label="Type"><option value="">All types</option>${['expense', 'income', 'transfer'].map((t) => `<option value="${t}" ${f.t === t ? 'selected' : ''}>${t[0].toUpperCase() + t.slice(1)}</option>`).join('')}</select>
         <select id="fcat" aria-label="Category">${catFilterOptions(f.c)}</select>
         <select id="facc" aria-label="Account"><option value="">All accounts</option>${accounts.map((a) => `<option value="${esc(a.id)}" ${f.a === a.id ? 'selected' : ''}>${esc(a.name)}${hub ? ` (${esc(tx.memberName(a.ownerId))})` : ''}</option>`).join('')}</select>
@@ -497,18 +497,18 @@ export async function reportsScreen(root, ctx) {
       <div class="row"><button class="btn small" data-csv>⬇ CSV</button><button class="btn small" data-print>🖨 PDF</button></div>
     </div>
     <h2 class="muted small" style="display:none" id="print-title">${hub ? 'Family' : esc(cfg.memberName)} report: ${esc(label)}</h2>
-    <div class="tabs2" role="tablist">
+    <div class="tabs2" role="tablist" data-swipe="kind">
       <button data-k="income" class="${kind === 'income' ? 'on' : ''}" role="tab">Income <b class="num income">${money(tot.income)}</b></button>
       <button data-k="expense" class="${kind === 'expense' ? 'on' : ''}" role="tab">Expenses <b class="num expense">${money(tot.expense)}</b></button>
     </div>
     <div class="row small muted" style="margin:6px 2px 12px">Saved <b class="num ${tot.net >= 0 ? 'income' : 'expense'}">${money(tot.net)}</b> · Savings rate <b>${tot.income ? Math.round((tot.net / tot.income) * 100) : 0}%</b></div>
 
     <div class="grid two">
-      <div class="card"><h2>${kind === 'expense' ? 'Where the money went' : 'Where it came from'}</h2>${rows.length ? '<div class="chart-box"><canvas id="c-cat" aria-label="By category"></canvas></div>' : `<p class="muted">No ${kind} in this period.</p>`}</div>
+      <div class="card" data-swipe="kind"><h2>${kind === 'expense' ? 'Where the money went' : 'Where it came from'}</h2>${rows.length ? '<div class="chart-box"><canvas id="c-cat" aria-label="By category"></canvas></div>' : `<p class="muted">No ${kind} in this period.</p>`}</div>
       <div class="card"><h2>${mode === 'year' ? '12-month trend' : '6-month trend'}</h2><div class="chart-box"><canvas id="c-trend" aria-label="Trend"></canvas></div></div>
     </div>
 
-    <div class="card" style="padding:6px 12px">
+    <div class="card" style="padding:6px 12px" data-swipe="kind">
       <div class="card-head" style="padding-top:8px"><h2>${kind === 'expense' ? 'Expenses' : 'Income'} by category</h2><span class="muted small">vs ${esc(prevLabel)}</span></div>
       ${rows.length ? rows.map((r) => `<a class="rank link" href="${detail(r.id)}"><span class="pct" style="background:${esc(r.color)}">${Math.round((r.total / (kindTotal || 1)) * 100)}%</span>
         <span class="grow">${esc(r.icon)} ${esc(r.name)} <span class="muted small">(${r.count})</span></span><span class="num">${money(r.total)}</span><span class="delta">${delta(r)}</span></a>`).join('') : '<p class="muted">Nothing recorded.</p>'}
@@ -527,6 +527,23 @@ export async function reportsScreen(root, ctx) {
     if (b && 'csv' in b.dataset) return download(`mm-report-${d}.csv`, reports.toCSV(list), 'text/csv');
     if (b && 'print' in b.dataset) { $('#print-title', root).style.display = 'block'; window.print(); }
   };
+
+  // Swipe on the Income / Expenses tabs, the pie or the category list: Income <-> Expenses.
+  // Swipe anywhere else on the page: Mine <-> the other person <-> Family.
+  onSwipe(root, (dir, start) => {
+    const step = dir === 'next' ? 1 : -1;
+    if (start?.closest('[data-swipe="kind"]')) {
+      const order = ['income', 'expense']; // same order as the tabs on screen
+      const n = order.indexOf(kind) + step;
+      if (n < 0 || n >= order.length) return false;
+      return void go({ k: order[n] });
+    }
+    if (!view.seg) return false;
+    const order = ['me', 'other', 'all'];
+    const n = order.indexOf(view.w) + step;
+    if (n < 0 || n >= order.length) return false;
+    go({ w: order[n] === 'me' ? '' : order[n] });
+  });
 
   const ink = { income: cssVar('--income'), expense: cssVar('--expense') };
   if (rows.length) {

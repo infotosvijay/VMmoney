@@ -9,7 +9,7 @@ import * as budgets from '../budgets.js';
 import * as recurring from '../recurring.js';
 import * as lock from '../lock.js';
 import * as csv from '../csvimport.js';
-import { $, $$, money, toast, pickFiles, sheet, confirmDialog, promptDialog, pickDialog, empty, progress, applyTheme, relTime } from './components.js';
+import { onSwipe, $, $$, money, toast, pickFiles, sheet, confirmDialog, promptDialog, pickDialog, empty, progress, applyTheme, relTime } from './components.js';
 
 const VERSION = self.APP_VERSION || 'dev';
 const fmem = () => familyMember(cfg.memberId);
@@ -59,6 +59,14 @@ export async function categoriesScreen(root, ctx, { hub = false } = {}) {
     else if (d.accept) { await cats.accept(d.accept); toast('Accepted'); ctx.refresh(); }
     else if (d.act) categoryActions(d.act, ctx);
   };
+  // swipe left / right to move between Expense and Income categories
+  onSwipe(root, (dir) => {
+    const order = ['expense', 'income'];
+    const n = order.indexOf(catType) + (dir === 'next' ? 1 : -1);
+    if (n < 0 || n >= order.length) return false;
+    catType = order[n];
+    ctx.refresh();
+  });
 }
 
 async function categoryActions(id, ctx) {

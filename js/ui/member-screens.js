@@ -9,7 +9,7 @@ import * as reports from '../reports.js';
 import * as budgets from '../budgets.js';
 import * as sync from '../sync.js';
 import * as live from '../livesync.js';
-import { installBanner, syncReminder, $, money, toast, confirmDialog, promptDialog, pickFiles, shareOrDownload, empty, progress, relTime, daysSince, sheet } from './components.js';
+import { onSwipe, installBanner, syncReminder, $, money, toast, confirmDialog, promptDialog, pickFiles, shareOrDownload, empty, progress, relTime, daysSince, sheet } from './components.js';
 import { txRow, entryScreen, transactionsScreen, reportsScreen } from './shared-screens.js';
 import { positionScreen, positionCard } from './position-screens.js';
 import { categoryDetailScreen, categoryTitle, categoryBack } from './stats-screens.js';
@@ -91,13 +91,21 @@ async function homeScreen(root, ctx) {
     </div>
     <p style="text-align:center"><a class="btn primary" href="#/add">＋ Add entry</a></p>`;
 
-  root.onclick = (e) => {
-    const b = e.target.closest('[data-mnav]');
-    if (!b || b.disabled) return;
-    const next = addMonths(month, Number(b.dataset.mnav));
+  const showMonth = (next) => {
     history.replaceState(null, '', next === cur ? '#/home' : `#/home?m=${next}`);
     ctx.refresh();
   };
+  root.onclick = (e) => {
+    const b = e.target.closest('[data-mnav]');
+    if (!b || b.disabled) return;
+    showMonth(addMonths(month, Number(b.dataset.mnav)));
+  };
+  // swipe left for the next month, right for the previous one (never past the current month)
+  onSwipe(root, (dir) => {
+    const next = addMonths(month, dir === 'next' ? 1 : -1);
+    if (next > cur) return false;
+    showMonth(next);
+  });
 }
 
 // ---------------------------------------------------------------- family view
