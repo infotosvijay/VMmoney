@@ -270,32 +270,47 @@ export async function transactionsScreen(root, ctx) {
     q: P.get('q') || '', m: P.get('m') || thisMonth(), t: P.get('t') || '', c: P.get('c') || '', a: P.get('a') || '',
     u: P.get('u') || '', min: P.get('min') || '', max: P.get('max') || '', w: view.w === 'me' ? '' : view.w,
   };
-  const setF = (patch) => {
-    const n = { ...f, ...patch };
+  const writeUrl = (n) => {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(n)) if (v && !(k === 'm' && v === thisMonth())) qs.set(k, v);
     history.replaceState(null, '', '#/transactions' + (qs.toString() ? '?' + qs : ''));
+  };
+  const setF = (patch) => {
+    writeUrl({ ...f, ...patch });
     shown = 200;
     ctx.refresh();
   };
 
-  const filter = { scope, text: f.q, type: f.t, accountId: f.a, memberId: f.u || view.memberId, min: +f.min || 0, max: +f.max || 0 };
-  if (f.c.startsWith('s:')) filter.subcategoryId = f.c.slice(2);
-  else if (f.c.startsWith('c:')) filter.categoryId = f.c.slice(2);
-  if (/^\d{4}-\d{2}$/.test(f.m)) Object.assign(filter, monthRange(f.m));
-  else if (/^\d{4}$/.test(f.m)) Object.assign(filter, { from: `${f.m}-01-01`, to: `${f.m}-12-31` });
-  let list = tx.query(filter);
-  const tot = reports.totals(list);
   const accounts = hub ? db.live('accounts') : tx.myAccounts({ includeArchived: true });
   const isMonth = /^\d{4}-\d{2}$/.test(f.m);
-  const activeCount = [f.q, f.t, f.c, f.a, f.u, f.min, f.max].filter(Boolean).length;
+  let list, tot, page, activeCount;
+  const compute = () => {
+    const filter = { scope, text: f.q, type: f.t, accountId: f.a, memberId: f.u || view.memberId, min: +f.min || 0, max: +f.max || 0 };
+    if (f.c.startsWith('s:')) filter.subcategoryId = f.c.slice(2);
+    else if (f.c.startsWith('c:')) filter.categoryId = f.c.slice(2);
+    if (/^\d{4}-\d{2}$/.test(f.m)) Object.assign(filter, monthRange(f.m));
+    else if (/^\d{4}$/.test(f.m)) Object.assign(filter, { from: `${f.m}-01-01`, to: `${f.m}-12-31` });
+    list = tx.query(filter);
+    tot = reports.totals(list);
+    activeCount = [f.q, f.t, f.c, f.a, f.u, f.min, f.max].filter(Boolean).length;
+    if (hub) {
+      const dir = sortState.dir;
+      const keyFn = { date: (t) => t.date, amount: (t) => t.amount, member: (t) => tx.memberName(t.ownerId), category: (t) => cats.pathLabel(t) }[sortState.key];
+      list = [...list].sort((a, b) => (keyFn(a) > keyFn(b) ? dir : keyFn(a) < keyFn(b) ? -dir : 0));
+    }
+    page = list.slice(0, shown);
+  };
+  compute();
 
-  if (hub) {
-    const dir = sortState.dir;
-    const keyFn = { date: (t) => t.date, amount: (t) => t.amount, member: (t) => tx.memberName(t.ownerId), category: (t) => cats.pathLabel(t) }[sortState.key];
-    list = [...list].sort((a, b) => (keyFn(a) > keyFn(b) ? dir : keyFn(a) < keyFn(b) ? -dir : 0));
-  }
-  const page = list.slice(0, shown);
+  const fsumText = () => 'Filters' + (activeCount ? ` (${activeCount} on)` : '');
+  const bottomHTML = () => `
+        <span class="muted small">${list.length} entries · <span class="income num">+${money(tot.income)}</span> · <span class="expense num">−${money(tot.expense)}</span></span>
+        <span class="row">${activeCount ? '<button class="btn small" data-clear>✕ Clear filters</button>' : ''}<button class="btn small" data-csv>⬇ CSV</button>${hub ? '<button class="btn small" data-bulk disabled>Recategorize</button>' : ''}</span>
+`;
+  const resultsHTML = () => `
+    ${list.length ? (hub ? hubTable(page) : groupedList(page, { showMember: scope === 'all' })) : empty('No entries here.', activeCount ? 'Nothing matches these filters. Tap <b>Clear filters</b> above.' : 'Tap the blue <b>＋</b> below to add one, or try another month.')}
+    ${list.length > shown ? `<button class="btn" style="width:100%" data-more-rows>Show ${Math.min(200, list.length - shown)} more (${list.length - shown} left)</button>` : ''}
+`;
 
   const hasChanges = !hub && db.all('transactions').some((t) => t.ownerId === cfg.memberId && (!cfg.lastExportAt || t.updatedAt > cfg.lastExportAt));
   root.innerHTML = `
@@ -309,7 +324,7 @@ export async function transactionsScreen(root, ctx) {
         <button class="btn small" data-allmonths>${f.m === 'all' ? 'This month' : 'All time'}</button>
       </div>
       <input id="q" type="search" placeholder="Search notes, tags…" value="${esc(f.q)}" aria-label="Search" style="margin-top:10px">
-      <details class="more-filters" ${activeCount ? 'open' : ''}><summary>Filters${activeCount ? ` (${activeCount} on)` : ''}</summary><div class="filters">
+      <details class="more-filters" ${activeCount ? 'open' : ''}><summary id="fsum">${fsumText()}</summary><div class="filters">
         <select id="ftype" aria-label="Type"><option value="">All types</option>${['expense', 'income', 'transfer'].map((t) => `<option value="${t}" ${f.t === t ? 'selected' : ''}>${t[0].toUpperCase() + t.slice(1)}</option>`).join('')}</select>
         <select id="fcat" aria-label="Category">${catFilterOptions(f.c)}</select>
         <select id="facc" aria-label="Account"><option value="">All accounts</option>${accounts.map((a) => `<option value="${esc(a.id)}" ${f.a === a.id ? 'selected' : ''}>${esc(a.name)}${hub ? ` (${esc(tx.memberName(a.ownerId))})` : ''}</option>`).join('')}</select>
@@ -317,17 +332,24 @@ export async function transactionsScreen(root, ctx) {
         <input id="fmin" type="number" inputmode="decimal" placeholder="Min amount" value="${esc(f.min)}" aria-label="Minimum amount">
         <input id="fmax" type="number" inputmode="decimal" placeholder="Max amount" value="${esc(f.max)}" aria-label="Maximum amount">
       </div></details>
-      <div class="row between">
-        <span class="muted small">${list.length} entries · <span class="income num">+${money(tot.income)}</span> · <span class="expense num">−${money(tot.expense)}</span></span>
-        <span class="row">${activeCount ? '<button class="btn small" data-clear>✕ Clear filters</button>' : ''}<button class="btn small" data-csv>⬇ CSV</button>${hub ? '<button class="btn small" data-bulk disabled>Recategorize</button>' : ''}</span>
+      <div class="row between" id="tx-bottom">${bottomHTML()}
       </div>
     </div>
-    ${list.length ? (hub ? hubTable(page) : groupedList(page, { showMember: scope === 'all' })) : empty('No entries here.', activeCount ? 'Nothing matches these filters. Tap <b>Clear filters</b> above.' : 'Tap the blue <b>＋</b> below to add one, or try another month.')}
-    ${list.length > shown ? `<button class="btn" style="width:100%" data-more-rows>Show ${Math.min(200, list.length - shown)} more (${list.length - shown} left)</button>` : ''}
+    <div id="tx-results">${resultsHTML()}</div>
   `;
 
   const debounce = (fn, ms = 300) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
-  $('#q', root).oninput = debounce((e) => setF({ q: e.target.value }));
+  // Searching repaints only the list and totals. The input itself is never rebuilt, so the keyboard stays open.
+  $('#q', root).oninput = debounce((e) => {
+    f.q = e.target.value;
+    writeUrl(f);
+    shown = 200;
+    compute();
+    $('#tx-bottom', root).innerHTML = bottomHTML();
+    $('#tx-results', root).innerHTML = resultsHTML();
+    $('#fsum', root).textContent = fsumText();
+    selected.clear();
+  }, 200);
   $('#ftype', root).onchange = (e) => setF({ t: e.target.value });
   $('#fcat', root).onchange = (e) => setF({ c: e.target.value });
   $('#facc', root).onchange = (e) => setF({ a: e.target.value });
@@ -336,7 +358,7 @@ export async function transactionsScreen(root, ctx) {
   $('#fmax', root).onchange = (e) => setF({ max: e.target.value });
 
   const selected = new Set();
-  const bulkBtn = $('[data-bulk]', root);
+  const bulkBtn = () => $('[data-bulk]', root);
   root.onclick = async (e) => {
     const b = e.target.closest('button');
     const th = e.target.closest('th[data-sort]');
@@ -360,7 +382,8 @@ export async function transactionsScreen(root, ctx) {
     } else if (e.target.matches('[data-selall]')) {
       $$('[data-sel]', root).forEach((c) => { c.checked = e.target.checked; e.target.checked ? selected.add(c.dataset.sel) : selected.delete(c.dataset.sel); });
     } else return;
-    if (bulkBtn) { bulkBtn.disabled = !selected.size; bulkBtn.textContent = selected.size ? `Recategorize (${selected.size})` : 'Recategorize'; }
+    const bb = bulkBtn();
+    if (bb) { bb.disabled = !selected.size; bb.textContent = selected.size ? `Recategorize (${selected.size})` : 'Recategorize'; }
   };
 }
 
