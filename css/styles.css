@@ -155,7 +155,9 @@ button.list-item:hover, a.list-item:hover { background: var(--bg); }
 .list-item .title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .list-item .sub { color: var(--muted); font-size: .82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .avatar { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; font-size: 1.25rem; background: var(--brand-soft); flex: none; }
-.day-head { display: flex; justify-content: space-between; padding: 14px 4px 4px; font-size: .82rem; color: var(--muted); font-weight: 600; }
+.day-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 4px 4px; font-size: .82rem; color: var(--muted); font-weight: 600; text-decoration: none; }
+.day-add { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--plus); color: #fff; font-size: 1rem; line-height: 1; }
+.day-head:hover .day-add, .day-head:focus-visible .day-add { filter: brightness(1.15); }
 
 .chip { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 99px; background: var(--brand-soft); font-size: .8rem; }
 .chip[style] { background: color-mix(in srgb, var(--c) 18%, transparent); }

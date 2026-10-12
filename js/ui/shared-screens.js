@@ -52,7 +52,7 @@ export function groupedList(list, opts) {
     if (t.date !== day) {
       day = t.date;
       const dayTotal = list.filter((x) => x.date === day && x.type !== 'transfer').reduce((s, x) => s + (x.type === 'income' ? x.amount : -x.amount), 0);
-      html += `${html ? '</div>' : ''}<div class="day-head"><span>${esc(dayLabel(day))}</span><span class="num">${dayTotal >= 0 ? '+' : '−'}${money(Math.abs(dayTotal))}</span></div><div class="card list" style="padding:0 12px;margin-bottom:6px">`;
+      html += `${html ? '</div>' : ''}<a class="day-head" href="#/add?date=${esc(day)}" title="Add an entry on this date"><span>${esc(dayLabel(day))}</span><span class="row" style="gap:10px"><span class="num">${dayTotal >= 0 ? '+' : '−'}${money(Math.abs(dayTotal))}</span><span class="day-add" aria-label="Add entry on this date">＋</span></span></a><div class="card list" style="padding:0 12px;margin-bottom:6px">`;
     }
     html += txRow(t, opts);
   }
@@ -85,7 +85,7 @@ export async function entryScreen(root, ctx) {
   const st = existing
     ? { ...existing, amount: String(existing.amount), tagsText: (existing.tags || []).join(' '), repeat: '', xfer: existing.toMemberId ? 'member' : 'own', direction: existing.direction || 'out' }
     : {
-        type: ctx.params.get('type') || 'expense', amount: '', date: todayStr(), categoryId: null, subcategoryId: null,
+        type: ctx.params.get('type') || 'expense', amount: '', date: /^\d{4}-\d{2}-\d{2}$/.test(ctx.params.get('date') || '') ? ctx.params.get('date') : todayStr(), categoryId: null, subcategoryId: null,
         accountId: accounts[0]?.id || null, toAccountId: null,
         note: '', tagsText: '', receiptPhoto: null, repeat: '', xfer: 'own', direction: 'out',
       };
@@ -198,7 +198,7 @@ export async function entryScreen(root, ctx) {
       Object.assign(st, { amount: '', note: '', tagsText: '', receiptPhoto: null, repeat: '', subcategoryId: null });
       draw();
       $('#amount', root).focus();
-    } else history.length > 1 && existing ? history.back() : ctx.go('transactions');
+    } else (existing || ctx.params.get('date')) && history.length > 1 ? history.back() : ctx.go('transactions');
   }
 
   function bind() {
