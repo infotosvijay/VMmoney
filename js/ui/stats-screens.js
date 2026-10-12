@@ -6,7 +6,7 @@ import { esc, addMonths, monthRange, monthLabel } from '../models.js';
 import * as cats from '../categories.js';
 import * as tx from '../transactions.js';
 import { $, money, drawChart, empty } from './components.js';
-import { groupedList } from './shared-screens.js';
+import { groupedList, viewOf, whoSeg } from './shared-screens.js';
 
 export const categoryTitle = (ctx) => {
   const c = ctx.params.get('c');
@@ -15,12 +15,12 @@ export const categoryTitle = (ctx) => {
 
 export function categoryBack(ctx) {
   const p = ctx.params;
-  return `reports?p=${p.get('p') || 'month'}&d=${p.get('d') || ''}&k=${p.get('t') || 'expense'}`;
+  return `reports?p=${p.get('p') || 'month'}&d=${p.get('d') || ''}&k=${p.get('t') || 'expense'}${p.get('w') ? '&w=' + p.get('w') : ''}`;
 }
 
 /** Entries of this category (and optional subcategory) inside a date range. */
-function entriesFor({ scope, c, s, type, from, to }) {
-  let list = tx.query({ scope, from, to, type });
+function entriesFor({ scope, memberId, c, s, type, from, to }) {
+  let list = tx.query({ scope, memberId, from, to, type });
   list = c === 'none' ? list.filter((t) => !t.categoryId) : list.filter((t) => t.categoryId === c);
   if (s) list = s === 'none' ? list.filter((t) => !t.subcategoryId) : list.filter((t) => t.subcategoryId === s);
   return list;
@@ -29,7 +29,8 @@ const sum = (l) => l.reduce((t, x) => t + x.amount, 0);
 
 export async function categoryDetailScreen(root, ctx) {
   const P = ctx.params;
-  const scope = cfg.mode === 'hub' ? 'all' : 'mine';
+  const view = viewOf(P);
+  const { scope, memberId } = view;
   const c = P.get('c');
   const s = P.get('s') || '';
   const mode = P.get('p') === 'year' ? 'year' : 'month';
@@ -38,7 +39,7 @@ export async function categoryDetailScreen(root, ctx) {
   const type = P.get('t') || cat?.type || 'expense';
   const color = cat?.color || '#94a3b8';
   const go = (patch) => {
-    const n = { c, s, p: mode, d, t: type, ...patch };
+    const n = { c, s, p: mode, d, t: type, w: view.w === 'me' ? '' : view.w, ...patch };
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(n)) if (v) qs.set(k, v);
     history.replaceState(null, '', `#/category?${qs}`);
@@ -46,9 +47,9 @@ export async function categoryDetailScreen(root, ctx) {
   };
 
   const range = mode === 'year' ? { from: `${d}-01-01`, to: `${d}-12-31` } : monthRange(d);
-  const all = entriesFor({ scope, c, type, ...range });
+  const all = entriesFor({ scope, memberId, c, type, ...range });
   const total = sum(all);
-  const list = s ? entriesFor({ scope, c, s, type, ...range }) : all;
+  const list = s ? entriesFor({ scope, memberId, c, s, type, ...range }) : all;
 
   // subcategory breakdown (the "All / school / tuition" block)
   const subMap = new Map();
@@ -63,13 +64,14 @@ export async function categoryDetailScreen(root, ctx) {
   const endMonth = mode === 'year' ? `${d}-12` : d;
   const n = mode === 'year' ? 12 : 8;
   const months = Array.from({ length: n }, (_, i) => addMonths(endMonth, i - (n - 1)));
-  const hist = months.map((m) => ({ month: m, total: sum(entriesFor({ scope, c, s, type, ...monthRange(m) })) }));
+  const hist = months.map((m) => ({ month: m, total: sum(entriesFor({ scope, memberId, c, s, type, ...monthRange(m) })) }));
   const avg = hist.length ? sum(hist.map((h) => ({ amount: h.total }))) / hist.length : 0;
   const label = mode === 'year' ? d : monthLabel(d);
   const title = c === 'none' ? 'Uncategorized' : cat?.name || 'Category';
   const subName = s ? (s === 'none' ? '(no subcategory)' : cats.name(s)) : '';
 
   root.innerHTML = `
+    ${view.seg ? whoSeg(view.w) : ''}
     <div class="row between" style="margin-bottom:12px">
       <div class="row"><button class="btn small" data-nav="-1" aria-label="Previous">‹</button><b>${esc(label)}</b><button class="btn small" data-nav="1" aria-label="Next">›</button></div>
       <div class="seg" style="min-width:150px"><button data-p="month" class="${mode === 'month' ? 'on' : ''}">Monthly</button><button data-p="year" class="${mode === 'year' ? 'on' : ''}">Yearly</button></div>
@@ -109,6 +111,7 @@ export async function categoryDetailScreen(root, ctx) {
     const row = e.target.closest('[data-sub]');
     if (b?.dataset.nav) return go({ d: mode === 'year' ? String(Number(d) + Number(b.dataset.nav)) : addMonths(d, Number(b.dataset.nav)) });
     if (b?.dataset.p) return go({ p: b.dataset.p, d: b.dataset.p === 'year' ? d.slice(0, 4) : mode === 'year' ? `${d}-${new Date().toISOString().slice(5, 7)}` : d });
+    if (b?.dataset.w) return go({ w: b.dataset.w === 'me' ? '' : b.dataset.w, s: '' });
     if (row) go({ s: row.dataset.sub });
   };
 

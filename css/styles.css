@@ -304,3 +304,6 @@ dialog.sheet::backdrop { background: rgba(0,0,0,.45); }
 .cat-grid.collapsed { grid-template-columns: minmax(120px, 160px); }
 .cat-grid.collapsed .cat-tile { flex-direction: row; justify-content: flex-start; gap: 10px; min-height: 52px; padding: 8px 14px; font-size: .95rem; text-align: left; }
 .cat-grid.collapsed .cat-tile .e { font-size: 1.4rem; }
+
+.inhand { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 12px; background: var(--bg); }
+.inhand b { font-size: 1.15rem; }

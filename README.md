@@ -108,6 +108,12 @@ device to device). If the router blocks devices from reaching each other (guest 
 - **Laptop → phone:** laptop **Send to members → Create family package**, send it to each phone, then phone
   **Sync → Import a file**.
 
+### Seeing each other's spending and balances
+Every sync also brings back the **other person's entries** (read-only) and the shared **Balances** (banks, cash, cards).
+On a phone, Entries and Reports then show **Mine / <other person> / Family**, and Summary shows *Family spending*.
+Data is only as fresh as the last sync: VJ sees MM's latest after MM has synced with the laptop, then VJ syncs.
+When creating a family package by file, keep "Include everyone's entries" ticked.
+
 Both methods use the same merge rules, so mix them freely. Importing the same file twice changes nothing.
 
 ---

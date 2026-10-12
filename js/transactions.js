@@ -38,6 +38,9 @@ export function query(f = {}) {
   return list.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.createdAt < b.createdAt ? 1 : -1));
 }
 
+/** True once this phone has received the other person's entries from the hub. */
+export const hasFamilyData = () => db.live('transactions').some((t) => t.ownerId !== cfg.memberId);
+
 // ---- accounts ----
 
 const ACC_ORDER = { online: 0, cash: 1 };
@@ -122,12 +125,34 @@ export async function ensureSelfMember() {
 export function memberTransfers() {
   return db.live('transactions').filter((t) => t.type === 'transfer' && t.toMemberId);
 }
-/** Net money moved from VJ to MM (negative = MM has given VJ more). */
-export function netVjToMm() {
-  let net = 0;
-  for (const t of memberTransfers()) {
-    const fromVj = (t.ownerId === FAMILY[0].id) === (t.direction === 'out');
-    net += fromVj ? t.amount : -t.amount;
+const dayNum = (iso) => Math.round(new Date(`${iso}T00:00:00Z`).getTime() / 86400000);
+
+/**
+ * VJ <-> MM transfers, with the two sides of the same transfer counted once.
+ * Each of you may record your own side ("I paid MM" / "VJ paid me"). Two entries are the same transfer when they go
+ * the same way, for the same amount, within a day of each other, recorded by different people.
+ * Returns { events: [{ from, to, amount, date, ids: [..] }], matched }.
+ */
+export function transferEvents() {
+  const evs = memberTransfers().map((t) => {
+    const sent = t.direction === 'out';
+    return { id: t.id, from: sent ? t.ownerId : t.toMemberId, to: sent ? t.toMemberId : t.ownerId, amount: t.amount, date: t.date, by: t.ownerId };
+  }).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  const used = new Set();
+  const events = [];
+  let matched = 0;
+  for (const e of evs) {
+    if (used.has(e.id)) continue;
+    used.add(e.id);
+    const twin = evs.find((o) => !used.has(o.id) && o.by !== e.by && o.from === e.from && o.to === e.to
+      && Math.abs(o.amount - e.amount) < 0.005 && Math.abs(dayNum(o.date) - dayNum(e.date)) <= 1);
+    if (twin) { used.add(twin.id); matched++; }
+    events.push({ ...e, ids: twin ? [e.id, twin.id] : [e.id] });
   }
-  return net;
+  return { events, matched };
+}
+
+/** Net money moved from VJ to MM (negative = MM has given VJ more). Duplicates recorded by both are counted once. */
+export function netVjToMm() {
+  return transferEvents().events.reduce((net, e) => net + (e.from === FAMILY[0].id ? e.amount : -e.amount), 0);
 }

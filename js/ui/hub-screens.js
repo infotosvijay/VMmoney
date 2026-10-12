@@ -157,6 +157,7 @@ async function sendScreen(root, ctx) {
     ${pend ? `<div class="banner">${pend} category ${pend === 1 ? 'is' : 'are'} still waiting for review. <a href="#/categories">Review first</a> so members get the cleaned list.</div>` : ''}
     <div class="card stack"><h2>Create family package</h2>
       <p class="muted small">Contains the master categories, budgets and member list. Members import it in <b>Sync → Import</b>. The same file works for everyone.</p>
+      <label class="check"><input type="checkbox" id="ents" checked> Include everyone's entries, so VJ and MM can each see the family's spending</label>
       <label class="check"><input type="checkbox" id="summ" checked> Include the read-only family summary (monthly totals, top categories)</label>
       <label class="field"><span>Password (optional)</span><input id="pw" type="password" autocomplete="new-password" placeholder="Leave empty for no encryption"></label>
       <div class="row"><button class="btn primary" data-make>Create &amp; share / download</button></div>
@@ -165,7 +166,7 @@ async function sendScreen(root, ctx) {
   root.onclick = async (e) => {
     if (!e.target.closest('[data-make]')) return;
     try {
-      const { pkg, fileName, count } = await sync.buildFamilyPackage({ includeSummary: $('#summ', root).checked });
+      const { pkg, fileName, count } = await sync.buildFamilyPackage({ includeSummary: $('#summ', root).checked, entries: $('#ents', root).checked });
       let text = JSON.stringify(pkg);
       const pw = $('#pw', root).value.trim();
       if (pw) text = await sync.encryptText(text, pw);
@@ -267,9 +268,9 @@ async function liveScreen(root, ctx) {
 export const hubRoutes = {
   dashboard: { title: 'Family dashboard', render: dashboardScreen },
   add: { title: (c) => (c.params.get('id') ? 'Edit entry' : 'Add entry'), render: entryScreen },
-  transactions: { title: 'All transactions', render: (r, c) => transactionsScreen(r, c, { scope: 'all' }) },
+  transactions: { title: 'All transactions', render: transactionsScreen },
   position: { title: 'Balances', render: positionScreen },
-  reports: { title: 'Family reports', render: (r, c) => reportsScreen(r, c, { scope: 'all' }) },
+  reports: { title: 'Family reports', render: reportsScreen },
   live: { title: 'Live sync', render: liveScreen },
   category: { title: categoryTitle, render: categoryDetailScreen, back: categoryBack, navId: 'reports' },
   import: { title: 'Import center', render: importScreen },

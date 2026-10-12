@@ -186,7 +186,7 @@ export function lastSyncAt(memberId) {
  * `ownFor` (live sync): also return that member's own records changed after `since`, so entries imported or
  * recategorised on the hub reach their phone. null `since` means everything.
  */
-export async function buildFamilyPackage({ includeSummary = true, ownFor = null, since = null } = {}) {
+export async function buildFamilyPackage({ includeSummary = true, ownFor = null, since = null, entries = true, entriesExcept = null, justReceived = null } = {}) {
   const records = {
     categories: db.all('categories'),
     budgets: db.all('budgets'),
@@ -195,8 +195,18 @@ export async function buildFamilyPackage({ includeSummary = true, ownFor = null,
   };
   if (includeSummary) records.summary = reports.buildFamilySummary();
   if (ownFor) {
-    const mine = (s) => db.all(s).filter((r) => r.ownerId === ownFor && (!since || r.updatedAt > since));
+    // don't echo back what the phone has only just sent us
+    const echo = (s, r) => justReceived?.[s]?.has(`${r.id}|${r.updatedAt}`);
+    const mine = (s) => db.all(s).filter((r) => r.ownerId === ownFor && (!since || r.updatedAt > since) && !echo(s, r));
     records.own = { transactions: mine('transactions'), accounts: mine('accounts'), recurring: mine('recurring') };
+  }
+  if (entries) {
+    // Everyone's entries (minus receipt photos) so each phone can see the family's spending. A phone ignores its own.
+    const others = (r) => !entriesExcept || r.ownerId !== entriesExcept;
+    records.family = {
+      transactions: db.all('transactions').filter(others).map((t) => (t.receiptPhoto ? { ...t, receiptPhoto: null } : t)),
+      accounts: db.all('accounts').filter(others),
+    };
   }
   const pkg = await envelope('family', records);
   return { pkg, fileName: `mm-family-${stamp()}.json`, count: records.categories.length + records.budgets.length + records.holdings.length };
@@ -206,10 +216,11 @@ export function previewFamilyPackage(pkg) {
   if (pkg.packageType !== 'family') throw new Error(`${pkg.fileName || 'File'}: expected a family package`);
   const r = pkg.records;
   const own = (s) => planMerge(s, r.own?.[s], (rec) => rec.ownerId === cfg.memberId);
+  const others = (s) => planMerge(s, r.family?.[s], (rec) => rec.ownerId !== cfg.memberId);
   return {
     pkg, hasSummary: !!r.summary,
     plans: [planMerge('categories', r.categories), planMerge('budgets', r.budgets), planMerge('members', r.members), planMerge('holdings', r.holdings),
-      own('accounts'), own('transactions'), own('recurring')],
+      own('accounts'), own('transactions'), own('recurring'), others('accounts'), others('transactions')],
   };
 }
 
@@ -217,6 +228,7 @@ export async function applyFamilyPackage(preview) {
   const { pkg, plans } = preview;
   for (const p of plans) await writePlan(p);
   if (pkg.records.summary) await db.setCfg('familySummary', pkg.records.summary);
+  if (pkg.records.family) { await db.setCfg('hasFamilyEntries', true); await db.setCfg('familyEntriesAt', nowISO()); }
   await cats.remapMerged();
   await db.setCfg('lastImportAt', nowISO());
   await db.put('syncLog', { id: uid(), direction: 'import', memberId: pkg.fromMemberId, fileName: pkg.fileName || '', recordCount: plans.reduce((n, p) => n + p.add.length + p.update.length, 0), at: nowISO() }, { silent: true });

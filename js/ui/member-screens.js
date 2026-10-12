@@ -2,7 +2,7 @@
 
 import * as db from '../db.js';
 import { cfg } from '../db.js';
-import { esc, thisMonth, monthLabel } from '../models.js';
+import { esc, thisMonth, monthLabel, FAMILY, otherMember } from '../models.js';
 import * as cats from '../categories.js';
 import * as tx from '../transactions.js';
 import * as reports from '../reports.js';
@@ -24,6 +24,36 @@ export const planSummary = (plans) => plans
 
 // ---------------------------------------------------------------- home
 
+/** "Family this month": what each of you spent, from the entries the hub sent back. */
+function inHandCard() {
+  const on = tx.onlineAccount();
+  const cash = tx.cashAccount();
+  const o = on ? tx.accountBalance(on) : 0;
+  const c = cash ? tx.accountBalance(cash) : 0;
+  const unset = !(on?.openingBalance) && !(cash?.openingBalance);
+  return `<div class="card">
+    <div class="card-head"><h2>Balance in hand</h2><a class="small" href="#/accounts">Opening balances ›</a></div>
+    <div class="stat" style="padding:0"><div class="value ${o + c >= 0 ? 'income' : 'expense'}">${money(o + c)}</div></div>
+    <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+      <div class="inhand"><span class="muted small">🏦 Online</span><b class="num ${o < 0 ? 'expense' : ''}">${money(o)}</b></div>
+      <div class="inhand"><span class="muted small">💵 Cash</span><b class="num ${c < 0 ? 'expense' : ''}">${money(c)}</b></div>
+    </div>
+    ${unset ? '<p class="muted small" style="margin:8px 0 0">Set your opening balances so this matches your bank and wallet.</p>' : ''}</div>`;
+}
+
+function familyCard(month) {
+  if (!tx.hasFamilyData()) return '';
+  const spent = (id) => reports.totals(tx.query({ scope: 'all', memberId: id, from: `${month}-01`, to: `${month}-31` })).expense;
+  const rows = FAMILY.map((f) => ({ f, v: spent(f.id) }));
+  const total = rows.reduce((s, r) => s + r.v, 0);
+  const other = otherMember(cfg.memberId);
+  return `<a class="card" href="#/reports?w=all" style="display:block;text-decoration:none;color:inherit">
+    <div class="card-head"><h2>Family spending · ${esc(monthLabel(month, false))}</h2><span class="small">Details ›</span></div>
+    <div class="stat" style="padding:0"><div class="label">Together</div><div class="value expense">${money(total)}</div></div>
+    <div class="row between small" style="margin-top:8px">${rows.map((r) => `<span><span class="pbadge" style="--c:${esc(r.f.color)}">${esc(r.f.name)}</span> <b class="num">${money(r.v)}</b></span>`).join('')}</div>
+    <p class="muted small" style="margin:8px 0 0">${esc(other.name)}'s entries as of the last sync ${esc(relTime(cfg.familyEntriesAt))}.</p></a>`;
+}
+
 async function homeScreen(root, ctx) {
   const month = thisMonth();
   const mine = tx.query({ scope: 'mine', from: `${month}-01`, to: `${month}-31` });
@@ -36,10 +66,12 @@ async function homeScreen(root, ctx) {
     <div class="grid stats">
       <div class="card stat"><div class="label">Spent in ${esc(monthLabel(month, false))}</div><div class="value expense">${money(tot.expense)}</div></div>
       <div class="card stat"><div class="label">Income</div><div class="value income">${money(tot.income)}</div></div>
-      <div class="card stat"><div class="label">Balance</div><div class="value ${tot.net >= 0 ? 'income' : 'expense'}">${money(tot.net)}</div></div>
+      <div class="card stat"><div class="label">Saved this month</div><div class="value ${tot.net >= 0 ? 'income' : 'expense'}">${money(tot.net)}</div></div>
     </div>
+    ${inHandCard()}
     ${alerts.length ? `<div class="card"><div class="card-head"><h2>Budget alerts</h2><a href="#/budgets" class="small">All budgets</a></div>
       ${alerts.map((a) => `<div style="margin-bottom:10px"><div class="row between small"><b>${esc(a.label)}</b><span class="${a.level === 'over' ? 'danger-text' : ''}">${Math.round(a.pct)}% of ${money(a.budget.limit)}</span></div>${progress(a.pct, a.level)}</div>`).join('')}</div>` : ''}
+    ${familyCard(month)}
     ${positionCard()}
     <div class="grid two">
       <div class="card"><div class="card-head"><h2>Top categories</h2><a href="#/reports" class="small">Reports</a></div>
@@ -165,10 +197,10 @@ async function syncScreen(root, ctx) {
 
 export const memberRoutes = {
   home: { title: 'Summary', render: homeScreen },
-  transactions: { title: () => `Hi, ${cfg.memberName}`, render: (r, c) => transactionsScreen(r, c, { scope: 'mine' }) },
+  transactions: { title: () => `Hi, ${cfg.memberName}`, render: transactionsScreen },
   add: { title: (c) => (c.params.get('id') ? 'Edit entry' : 'Add entry'), render: entryScreen },
   position: { title: 'Balances', render: positionScreen },
-  reports: { title: 'Reports', render: (r, c) => reportsScreen(r, c, { scope: 'mine' }) },
+  reports: { title: 'Reports', render: reportsScreen },
   category: { title: categoryTitle, render: categoryDetailScreen, back: categoryBack, navId: 'reports' },
   budgets: { title: 'Budgets', render: (r, c) => budgetsScreen(r, c, { hub: false }) },
   family: { title: 'Family view', render: familyScreen },

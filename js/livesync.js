@@ -103,7 +103,9 @@ export async function hostSession(ui) {
     }
     pkg.fileName = 'live sync';
     const applied = await sync.applyMemberPackage(preview);
-    const fam = await sync.buildFamilyPackage({ includeSummary: true, ownFor: pkg.fromMemberId, since: pkg.full ? null : pkg.since });
+    const fam = await sync.buildFamilyPackage({ includeSummary: true, ownFor: pkg.fromMemberId, since: pkg.full ? null : pkg.since, entries: true, entriesExcept: pkg.fromMemberId,
+      justReceived: Object.fromEntries(['transactions', 'accounts', 'recurring'].map((k) => [k, new Set((pkg.records[k] || []).map((r) => `${r.id}|${r.updatedAt}`))])),
+    });
     conn.send({ t: 'family', pkg: fam.pkg, applied });
     await inbox.next('done', STEP_TIMEOUT_MS).catch(() => {});
     ui.status(`Synced with ${preview.name}: ${applied} records received, family update sent.`, 'done');

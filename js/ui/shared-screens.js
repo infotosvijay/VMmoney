@@ -13,6 +13,19 @@ import { installBanner, syncReminder, $, $$, money, toast, confirmDialog, prompt
 
 const yesterday = () => { const d = new Date(); d.setDate(d.getDate() - 1); return localDate(d); };
 
+/** Which entries a phone screen shows: mine, the partner's, or the whole family. The hub always sees everyone. */
+export function viewOf(P) {
+  if (cfg.mode === 'hub') return { scope: 'all', memberId: '', w: '', seg: false };
+  const fam = tx.hasFamilyData();
+  const w = fam ? P.get('w') || 'me' : 'me';
+  return { scope: w === 'me' ? 'mine' : 'all', memberId: w === 'other' ? otherMember(cfg.memberId).id : '', w, seg: fam };
+}
+
+export function whoSeg(w) {
+  const o = otherMember(cfg.memberId);
+  return `<div class="seg who-seg no-print" role="tablist" aria-label="Whose entries">${[['me', 'Mine'], ['other', o.name], ['all', 'Family']].map(([k, l]) => `<button data-w="${k}" class="${w === k ? 'on' : ''}">${esc(l)}</button>`).join('')}</div>`;
+}
+
 export function txRow(t, { showMember = false } = {}) {
   const c = cats.get(t.categoryId);
   const sub = cats.get(t.subcategoryId);
@@ -96,7 +109,7 @@ export async function entryScreen(root, ctx) {
         </div>
         ${isT ? `<div class="seg"><button type="button" data-xfer="own" class="${mT ? '' : 'on'}">Between my accounts</button><button type="button" data-xfer="member" class="${mT ? 'on' : ''}">With ${esc(other.name)}</button></div>
         ${mT ? `<div class="seg"><button type="button" data-dir="out" class="${st.direction === 'in' ? '' : 'on'}">I paid ${esc(other.name)}</button><button type="button" data-dir="in" class="${st.direction === 'in' ? 'on' : ''}">${esc(other.name)} paid me</button></div>
-        <p class="muted small">Record this on one phone only, so it isn't counted twice. It never counts as income or expense.</p>` : ''}` : ''}
+        <p class="muted small">You can each record your own side. Two entries for the same amount on the same day (or a day apart) are matched and counted once between you. It never counts as income or expense.</p>` : ''}` : ''}
         <label class="field"><span>Amount (${esc(cfg.currency || 'INR')})</span>
           <input id="amount" class="amount-input" inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(st.amount)}" ${existing ? '' : 'autofocus'}>
         </label>
@@ -237,12 +250,14 @@ export async function entryScreen(root, ctx) {
 let shown = 200;
 const sortState = { key: 'date', dir: -1 };
 
-export async function transactionsScreen(root, ctx, { scope }) {
-  const hub = scope === 'all';
+export async function transactionsScreen(root, ctx) {
+  const hub = cfg.mode === 'hub';
   const P = ctx.params;
+  const view = viewOf(P);
+  const scope = view.scope;
   const f = {
     q: P.get('q') || '', m: P.get('m') || thisMonth(), t: P.get('t') || '', c: P.get('c') || '', a: P.get('a') || '',
-    u: P.get('u') || '', min: P.get('min') || '', max: P.get('max') || '',
+    u: P.get('u') || '', min: P.get('min') || '', max: P.get('max') || '', w: view.w === 'me' ? '' : view.w,
   };
   const setF = (patch) => {
     const n = { ...f, ...patch };
@@ -253,7 +268,7 @@ export async function transactionsScreen(root, ctx, { scope }) {
     ctx.refresh();
   };
 
-  const filter = { scope, text: f.q, type: f.t, accountId: f.a, memberId: f.u, min: +f.min || 0, max: +f.max || 0 };
+  const filter = { scope, text: f.q, type: f.t, accountId: f.a, memberId: f.u || view.memberId, min: +f.min || 0, max: +f.max || 0 };
   if (f.c.startsWith('s:')) filter.subcategoryId = f.c.slice(2);
   else if (f.c.startsWith('c:')) filter.categoryId = f.c.slice(2);
   if (/^\d{4}-\d{2}$/.test(f.m)) Object.assign(filter, monthRange(f.m));
@@ -273,6 +288,7 @@ export async function transactionsScreen(root, ctx, { scope }) {
   const hasChanges = !hub && db.all('transactions').some((t) => t.ownerId === cfg.memberId && (!cfg.lastExportAt || t.updatedAt > cfg.lastExportAt));
   root.innerHTML = `
     ${hub ? '' : installBanner() + syncReminder(hasChanges)}
+    ${view.seg ? whoSeg(view.w) : ''}
     <div class="card">
       <div class="row">
         ${isMonth ? '<button class="btn small" data-mnav="-1" aria-label="Previous month">‹</button>' : ''}
@@ -294,7 +310,7 @@ export async function transactionsScreen(root, ctx, { scope }) {
         <span class="row"><button class="btn small" data-csv>⬇ CSV</button>${hub ? '<button class="btn small" data-bulk disabled>Recategorize</button>' : ''}</span>
       </div>
     </div>
-    ${list.length ? (hub ? hubTable(page) : groupedList(page)) : empty('No entries here.', 'Tap the blue <b>＋</b> below to add one, or try another month.')}
+    ${list.length ? (hub ? hubTable(page) : groupedList(page, { showMember: scope === 'all' })) : empty('No entries here.', 'Tap the blue <b>＋</b> below to add one, or try another month.')}
     ${list.length > shown ? `<button class="btn" style="width:100%" data-more-rows>Show ${Math.min(200, list.length - shown)} more (${list.length - shown} left)</button>` : ''}
   `;
 
@@ -318,7 +334,8 @@ export async function transactionsScreen(root, ctx, { scope }) {
       return ctx.refresh();
     }
     if (!b) return;
-    if (b.dataset.mnav) setF({ m: addMonths(f.m, Number(b.dataset.mnav)) });
+    if (b.dataset.w) setF({ w: b.dataset.w === 'me' ? '' : b.dataset.w });
+    else if (b.dataset.mnav) setF({ m: addMonths(f.m, Number(b.dataset.mnav)) });
     else if ('allmonths' in b.dataset) setF({ m: f.m === 'all' ? thisMonth() : 'all' });
     else if ('moreRows' in b.dataset) { shown += 200; ctx.refresh(); }
     else if ('csv' in b.dataset) { download(`mm-transactions-${stamp()}.csv`, reports.toCSV(list), 'text/csv'); }
@@ -378,30 +395,33 @@ function bulkRecategorize(ids, ctx) {
 
 // ---------------------------------------------------------------- reports
 
-export async function reportsScreen(root, ctx, { scope }) {
-  const hub = scope === 'all';
+export async function reportsScreen(root, ctx) {
   const P = ctx.params;
+  const view = viewOf(P);
+  const scope = view.scope;
+  const hub = scope === 'all' && !view.memberId;
   const mode = P.get('p') === 'year' ? 'year' : 'month';
   const d = P.get('d') || (mode === 'year' ? thisMonth().slice(0, 4) : thisMonth());
   const kind = P.get('k') === 'income' ? 'income' : 'expense';
   const go = (patch) => {
-    const n = { p: mode, d, k: kind, ...patch };
-    history.replaceState(null, '', `#/reports?p=${n.p}&d=${n.d}&k=${n.k}`);
+    const n = { p: mode, d, k: kind, w: view.w === 'me' ? '' : view.w, ...patch };
+    history.replaceState(null, '', `#/reports?p=${n.p}&d=${n.d}&k=${n.k}${n.w ? '&w=' + n.w : ''}`);
     ctx.refresh();
   };
   const rangeOf = (x) => (mode === 'year' ? { from: `${x}-01-01`, to: `${x}-12-31` } : monthRange(x));
   const prevKey = mode === 'year' ? String(Number(d) - 1) : addMonths(d, -1);
-  const list = tx.query({ scope, ...rangeOf(d) });
+  const q = (r) => tx.query({ scope, memberId: view.memberId, ...r });
+  const list = q(rangeOf(d));
   const tot = reports.totals(list);
   const rows = reports.byCategory(list, kind);
-  const prevRows = new Map(reports.byCategory(tx.query({ scope, ...rangeOf(prevKey) }), kind).map((r) => [r.id, r.total]));
+  const prevRows = new Map(reports.byCategory(q(rangeOf(prevKey)), kind).map((r) => [r.id, r.total]));
   const kindTotal = kind === 'expense' ? tot.expense : tot.income;
   const label = mode === 'year' ? d : monthLabel(d);
   const prevLabel = mode === 'year' ? prevKey : monthLabel(prevKey, false);
   const trendEnd = mode === 'year' ? `${d}-12` : d;
-  const trend = reports.monthlyTrend(tx.query({ scope }), mode === 'year' ? 12 : 6, trendEnd);
+  const trend = reports.monthlyTrend(q({}), mode === 'year' ? 12 : 6, trendEnd);
   const members = hub ? reports.byMember(list) : [];
-  const detail = (id) => `#/category?c=${encodeURIComponent(id)}&d=${d}&p=${mode}&t=${kind}`;
+  const detail = (id) => `#/category?c=${encodeURIComponent(id)}&d=${d}&p=${mode}&t=${kind}${view.w && view.w !== 'me' ? '&w=' + view.w : ''}`;
 
   const delta = (r) => {
     const before = prevRows.get(r.id);
@@ -414,6 +434,7 @@ export async function reportsScreen(root, ctx, { scope }) {
   };
 
   root.innerHTML = `
+    ${view.seg ? whoSeg(view.w) : ''}
     <div class="row between no-print" style="margin-bottom:12px">
       <div class="seg" style="min-width:160px"><button data-p="month" class="${mode === 'month' ? 'on' : ''}">Monthly</button><button data-p="year" class="${mode === 'year' ? 'on' : ''}">Yearly</button></div>
       <div class="row"><button class="btn small" data-nav="-1" aria-label="Previous">‹</button><b>${esc(label)}</b><button class="btn small" data-nav="1" aria-label="Next">›</button></div>
@@ -445,6 +466,7 @@ export async function reportsScreen(root, ctx, { scope }) {
     const b = e.target.closest('button');
     if (b?.dataset.p) return go({ p: b.dataset.p, d: b.dataset.p === 'year' ? d.slice(0, 4) : mode === 'year' ? `${d}-${thisMonth().slice(5)}` : d });
     if (b?.dataset.k) return go({ k: b.dataset.k });
+    if (b?.dataset.w) return go({ w: b.dataset.w === 'me' ? '' : b.dataset.w });
     if (b?.dataset.nav) return go({ d: mode === 'year' ? String(Number(d) + Number(b.dataset.nav)) : addMonths(d, Number(b.dataset.nav)) });
     if (b && 'csv' in b.dataset) return download(`mm-report-${d}.csv`, reports.toCSV(list), 'text/csv');
     if (b && 'print' in b.dataset) { $('#print-title', root).style.display = 'block'; window.print(); }

@@ -33,7 +33,7 @@ export function statuses({ month = thisMonth(), memberOnly = false } = {}) {
     .map((b) => {
       let used;
       let partial = false;
-      if (b.scope === 'family' && cfg.mode !== 'hub') {
+      if (b.scope === 'family' && cfg.mode !== 'hub' && !cfg.hasFamilyEntries) {
         // A phone only holds its own records; use the family summary when the hub sent one.
         if (summary) used = summary[b.subcategoryId || b.categoryId] || 0;
         else { used = spent({ ...b, scope: 'member', memberId: cfg.memberId }, month); partial = true; }
