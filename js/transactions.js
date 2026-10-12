@@ -22,7 +22,6 @@ export const remove = (id) => db.update('transactions', id, { deleted: true });
 
 /** Filter transactions. scope: 'mine' | 'all'. Returns newest first. */
 export function query(f = {}) {
-  const text = f.text?.trim().toLowerCase();
   let list = db.live('transactions');
   // a VJ <-> MM transfer belongs to both people: the one who recorded it and the one it was sent to / received from
   const involves = (t, id) => t.ownerId === id || (t.type === 'transfer' && t.toMemberId === id);
@@ -36,7 +35,21 @@ export function query(f = {}) {
   if (f.accountId) list = list.filter((t) => t.accountId === f.accountId || t.toAccountId === f.accountId);
   if (f.min) list = list.filter((t) => t.amount >= f.min);
   if (f.max) list = list.filter((t) => t.amount <= f.max);
-  if (text) list = list.filter((t) => `${t.note} ${(t.tags || []).join(' ')}`.toLowerCase().includes(text));
+  if (f.text?.trim()) {
+    // every word typed must appear somewhere on the entry: note, tags, category, subcategory, amount, account, type, who, date
+    const clean = (s) => String(s ?? '').replace(/\uFE0F/g, '').toLowerCase();
+    const words = clean(f.text).split(/\s+/).filter(Boolean).map((w) => w.replace(/,/g, ''));
+    list = list.filter((t) => {
+      const hay = clean([
+        t.note, (t.tags || []).join(' '),
+        db.get('categories', t.categoryId)?.name, db.get('categories', t.subcategoryId)?.name,
+        t.amount, Number(t.amount).toFixed(2),
+        db.get('accounts', t.accountId)?.name, t.toAccountId && db.get('accounts', t.toAccountId)?.name,
+        t.type, db.get('members', t.ownerId)?.name, t.date,
+      ].filter((x) => x !== null && x !== undefined && x !== '').join(' '));
+      return words.every((w) => hay.includes(w));
+    });
+  }
   return list.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.createdAt < b.createdAt ? 1 : -1));
 }
 
