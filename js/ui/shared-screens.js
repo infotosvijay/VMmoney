@@ -1,0 +1,469 @@
+// Screens used by both Member and Hub: entry form, transactions list/table, reports.
+
+import * as db from '../db.js';
+import { cfg } from '../db.js';
+import { esc, otherMember, localDate, todayStr, thisMonth, addMonths, monthRange, monthLabel, dayLabel, PAYMENT_MODES, FREQUENCIES, stamp } from '../models.js';
+import * as cats from '../categories.js';
+import * as tx from '../transactions.js';
+import * as recurring from '../recurring.js';
+import * as reports from '../reports.js';
+import { installBanner, syncReminder, $, $$, money, toast, confirmDialog, promptDialog, empty, download, compressImage, drawChart, cssVar, sheet, memberOptions } from './components.js';
+
+// ---------------------------------------------------------------- rows
+
+const yesterday = () => { const d = new Date(); d.setDate(d.getDate() - 1); return localDate(d); };
+
+export function txRow(t, { showMember = false } = {}) {
+  const c = cats.get(t.categoryId);
+  const sub = cats.get(t.subcategoryId);
+  const isT = t.type === 'transfer';
+  const ico = isT ? (t.toMemberId ? '🤝' : '🔁') : c?.icon || '🏷️';
+  const title = isT
+    ? (t.toMemberId ? cats.pathLabel(t) : `${tx.accountName(t.accountId)} → ${tx.accountName(t.toAccountId)}`)
+    : sub?.name || c?.name || 'Uncategorized';
+  const parts = [];
+  if (sub && c) parts.push(c.name);
+  if (showMember) parts.push(tx.memberName(t.ownerId));
+  if (t.note) parts.push(t.note);
+  const sign = t.type === 'income' ? '+' : t.type === 'expense' ? '−' : '';
+  const inner = `<span class="avatar">${ico}</span><span class="main"><span class="title">${esc(title)}${t.receiptPhoto ? ' 📎' : ''}${t.recurringId ? ' 🔁' : ''}</span><span class="sub">${esc(parts.join(' · ') || tx.accountName(t.accountId))}</span></span><span class="num ${t.type}">${sign}${money(t.amount)}</span>`;
+  return tx.canEdit(t)
+    ? `<a class="list-item" href="#/add?id=${esc(t.id)}">${inner}</a>`
+    : `<div class="list-item">${inner}</div>`;
+}
+
+export function groupedList(list, opts) {
+  let html = '';
+  let day = '';
+  for (const t of list) {
+    if (t.date !== day) {
+      day = t.date;
+      const dayTotal = list.filter((x) => x.date === day && x.type !== 'transfer').reduce((s, x) => s + (x.type === 'income' ? x.amount : -x.amount), 0);
+      html += `${html ? '</div>' : ''}<div class="day-head"><span>${esc(dayLabel(day))}</span><span class="num">${dayTotal >= 0 ? '+' : '−'}${money(Math.abs(dayTotal))}</span></div><div class="card list" style="padding:0 12px;margin-bottom:6px">`;
+    }
+    html += txRow(t, opts);
+  }
+  return html + (html ? '</div>' : '');
+}
+
+/** <option>s for a category select: main categories with their subcategories indented. Values are c:<id> / s:<id>. */
+export function catFilterOptions(selected) {
+  let h = '<option value="">All categories</option>';
+  for (const type of ['expense', 'income']) {
+    h += `<optgroup label="${type === 'expense' ? 'Expense' : 'Income'}">`;
+    for (const { cat, subs } of cats.tree(type, { includeArchived: true })) {
+      h += `<option value="c:${esc(cat.id)}" ${selected === `c:${cat.id}` ? 'selected' : ''}>${esc(cat.icon)} ${esc(cat.name)}</option>`;
+      for (const s of subs) h += `<option value="s:${esc(s.id)}" ${selected === `s:${s.id}` ? 'selected' : ''}>&nbsp;&nbsp;– ${esc(s.name)}</option>`;
+    }
+    h += '</optgroup>';
+  }
+  return h;
+}
+
+// ---------------------------------------------------------------- entry form
+
+export async function entryScreen(root, ctx) {
+  const id = ctx.params.get('id');
+  const existing = id ? db.get('transactions', id) : null;
+  if (id && (!existing || existing.deleted)) { root.innerHTML = empty('That entry no longer exists.'); return; }
+  if (existing && !tx.canEdit(existing)) { root.innerHTML = empty('You can only edit your own entries.'); return; }
+
+  const accounts = tx.myAccounts();
+  const st = existing
+    ? { ...existing, amount: String(existing.amount), tagsText: (existing.tags || []).join(' '), repeat: '', xfer: existing.toMemberId ? 'member' : 'own', direction: existing.direction || 'out' }
+    : {
+        type: ctx.params.get('type') || 'expense', amount: '', date: todayStr(), categoryId: null, subcategoryId: null,
+        accountId: accounts.find((a) => a.id === cfg.lastAccountId)?.id || accounts[0]?.id || null, toAccountId: null,
+        paymentMode: cfg.lastPaymentMode || 'cash', note: '', tagsText: '', receiptPhoto: null, repeat: '', xfer: 'own', direction: 'out',
+      };
+
+  let focused = false;
+  function draw() {
+    const isT = st.type === 'transfer';
+    const other = otherMember(cfg.memberId);
+    const mT = isT && st.xfer === 'member';
+    const tree = isT ? [] : cats.tree(st.type, { includeArchived: false });
+    const picked = tree.find((x) => x.cat.id === st.categoryId);
+    // an archived category on an old entry should still show as selected
+    const archivedPick = existing && st.categoryId && !picked ? cats.get(st.categoryId) : null;
+    root.innerHTML = `
+      <form id="f" class="stack" novalidate>
+        <div class="seg" role="tablist">
+          ${['expense', 'income', 'transfer'].map((t) => `<button type="button" data-type="${t}" class="${st.type === t ? 'on' : ''} ${t}-t">${t[0].toUpperCase() + t.slice(1)}</button>`).join('')}
+        </div>
+        ${isT ? `<div class="seg"><button type="button" data-xfer="own" class="${mT ? '' : 'on'}">Between my accounts</button><button type="button" data-xfer="member" class="${mT ? 'on' : ''}">With ${esc(other.name)}</button></div>
+        ${mT ? `<div class="seg"><button type="button" data-dir="out" class="${st.direction === 'in' ? '' : 'on'}">I paid ${esc(other.name)}</button><button type="button" data-dir="in" class="${st.direction === 'in' ? 'on' : ''}">${esc(other.name)} paid me</button></div>
+        <p class="muted small">Record this on one phone only, so it isn't counted twice. It never counts as income or expense.</p>` : ''}` : ''}
+        <label class="field"><span>Amount (${esc(cfg.currency || 'INR')})</span>
+          <input id="amount" class="amount-input" inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(st.amount)}" ${existing ? '' : 'autofocus'}>
+        </label>
+        <div>
+          <span class="lbl">Date</span>
+          <div class="chips date-chips">
+            <button type="button" data-date="${esc(todayStr())}" class="${st.date === todayStr() ? 'on' : ''}">Today</button>
+            <button type="button" data-date="${esc(yesterday())}" class="${st.date === yesterday() ? 'on' : ''}">Yesterday</button>
+            <label class="datebtn ${st.date !== todayStr() && st.date !== yesterday() ? 'on' : ''}">📅 ${st.date === todayStr() || st.date === yesterday() ? 'Pick date' : esc(dayLabel(st.date))}<input id="date" type="date" value="${esc(st.date)}" max="2100-12-31" aria-label="Pick a date"></label>
+          </div>
+        </div>
+        ${isT ? '' : `
+        <div>
+          <div class="card-head"><b>Category</b><button type="button" class="btn small ghost" data-newcat>+ New</button></div>
+          <div class="cat-grid">
+            ${archivedPick ? `<button type="button" class="cat-tile on" disabled><span class="e">${esc(archivedPick.icon)}</span>${esc(archivedPick.name)} (archived)</button>` : ''}
+            ${tree.map(({ cat }) => `<button type="button" class="cat-tile ${cat.id === st.categoryId ? 'on' : ''}" data-cat="${esc(cat.id)}"><span class="e">${esc(cat.icon)}</span>${esc(cat.name)}</button>`).join('')}
+          </div>
+        </div>
+        ${picked ? `<div><div class="card-head"><b>${esc(picked.cat.name)}: subcategory <span class="muted small">(optional)</span></b><button type="button" class="btn small ghost" data-newsub>+ New</button></div>
+          <div class="chips">${picked.subs.map((s) => `<button type="button" class="${s.id === st.subcategoryId ? 'on' : ''}" data-sub="${esc(s.id)}">${esc(s.name)}</button>`).join('') || '<span class="muted small">No subcategories yet.</span>'}</div></div>` : ''}`}
+        <div class="form-grid">
+          <label class="field"><span>${mT ? (st.direction === 'in' ? 'Received into' : 'Paid from') : isT ? 'From account' : 'Account'}</span>
+            <select id="account">${accounts.map((a) => `<option value="${esc(a.id)}" ${a.id === st.accountId ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></label>
+          ${mT ? '' : isT ? `<label class="field"><span>To account</span>
+            <select id="toaccount"><option value="">Choose…</option>${accounts.filter((a) => a.id !== st.accountId).map((a) => `<option value="${esc(a.id)}" ${a.id === st.toAccountId ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></label>`
+            : `<label class="field"><span>Payment mode</span>
+            <select id="mode">${PAYMENT_MODES.map(([v, l]) => `<option value="${v}" ${v === st.paymentMode ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`}
+          ${existing || isT ? '' : `<label class="field"><span>Repeat</span>
+            <select id="repeat"><option value="">Does not repeat</option>${FREQUENCIES.map(([v, l]) => `<option value="${v}" ${v === st.repeat ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`}
+        </div>
+        <label class="field"><span>Note</span><input id="note" maxlength="200" value="${esc(st.note)}" placeholder="What was it for?"></label>
+        <label class="field"><span>Tags <span class="muted">(space separated)</span></span><input id="tags" value="${esc(st.tagsText)}" placeholder="#trip #diwali"></label>
+        <div>
+          <span class="muted small">Receipt photo (optional)</span>
+          <div class="row">
+            <label class="btn small">📷 ${st.receiptPhoto ? 'Replace' : 'Add photo'}<input id="photo" type="file" accept="image/*" hidden></label>
+            ${st.receiptPhoto ? '<button type="button" class="btn small" data-rmphoto>Remove</button>' : ''}
+          </div>
+          ${st.receiptPhoto ? `<img class="receipt-img" alt="Receipt" src="${st.receiptPhoto}" style="margin-top:8px">` : ''}
+        </div>
+        <p id="err" class="danger-text small" role="alert"></p>
+        <div class="row">
+          <button class="btn primary grow" data-save>${existing ? 'Save changes' : 'Save'}</button>
+          ${existing ? '' : '<button type="button" class="btn grow" data-again>Save &amp; add another</button>'}
+        </div>
+        ${existing ? '<button type="button" class="btn danger" data-delete style="width:100%">Delete entry</button>' : ''}
+      </form>`;
+    bind();
+    if (!existing && !focused) { focused = true; $('#amount', root)?.focus(); }
+  }
+
+  function sync() {
+    const g = (s) => $(s, root);
+    if (g('#amount')) st.amount = g('#amount').value;
+    if (g('#account')) st.accountId = g('#account').value;
+    if (g('#toaccount')) st.toAccountId = g('#toaccount').value || null;
+    if (g('#mode')) st.paymentMode = g('#mode').value;
+    if (g('#date')) st.date = g('#date').value;
+    if (g('#repeat')) st.repeat = g('#repeat').value;
+    if (g('#note')) st.note = g('#note').value;
+    if (g('#tags')) st.tagsText = g('#tags').value;
+  }
+
+  async function save(again) {
+    sync();
+    const err = $('#err', root);
+    const amount = Math.round(parseFloat(String(st.amount).replace(/,/g, '')) * 100) / 100;
+    if (!(amount > 0)) { err.textContent = 'Enter an amount greater than zero.'; $('#amount', root).focus(); return; }
+    if (!st.date) { err.textContent = 'Pick a date.'; return; }
+    if (st.type === 'transfer') {
+      if (!st.accountId || (st.xfer !== 'member' && !st.toAccountId)) { err.textContent = st.xfer === 'member' ? 'Choose your account.' : 'Choose both accounts for a transfer.'; return; }
+    } else if (!st.categoryId) { err.textContent = 'Choose a category.'; return; }
+    const tags = st.tagsText.split(/[\s,]+/).filter(Boolean).map((t) => (t.startsWith('#') ? t : `#${t}`));
+    const data = {
+      type: st.type, amount, date: st.date, note: st.note.trim(), tags, paymentMode: st.paymentMode,
+      categoryId: st.type === 'transfer' ? null : st.categoryId, subcategoryId: st.type === 'transfer' ? null : st.subcategoryId,
+      accountId: st.accountId, toAccountId: st.type === 'transfer' && st.xfer !== 'member' ? st.toAccountId : null, receiptPhoto: st.receiptPhoto || null,
+      toMemberId: st.type === 'transfer' && st.xfer === 'member' ? otherMember(cfg.memberId).id : null,
+      direction: st.type === 'transfer' && st.xfer === 'member' ? st.direction : null,
+    };
+    if (existing) await tx.update(existing.id, data);
+    else {
+      await tx.add(data);
+      if (st.repeat) {
+        const { receiptPhoto, ...tpl } = data;
+        await recurring.create(tpl, st.repeat, recurring.nextDate(st.date, st.repeat));
+      }
+    }
+    await db.setCfg('lastAccountId', st.accountId);
+    await db.setCfg('lastPaymentMode', st.paymentMode);
+    toast(existing ? 'Entry updated' : 'Saved');
+    if (again) {
+      Object.assign(st, { amount: '', note: '', tagsText: '', receiptPhoto: null, repeat: '', subcategoryId: null });
+      draw();
+      $('#amount', root).focus();
+    } else history.length > 1 && existing ? history.back() : ctx.go('transactions');
+  }
+
+  function bind() {
+    root.onclick = async (e) => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      if (b.dataset.type) { sync(); st.type = b.dataset.type; st.categoryId = null; st.subcategoryId = null; draw(); }
+      else if (b.dataset.date) { sync(); st.date = b.dataset.date; draw(); }
+      else if (b.dataset.xfer) { sync(); st.xfer = b.dataset.xfer; draw(); }
+      else if (b.dataset.dir) { sync(); st.direction = b.dataset.dir; draw(); }
+      else if (b.dataset.cat) { sync(); st.categoryId = b.dataset.cat; st.subcategoryId = null; draw(); }
+      else if (b.dataset.sub) { sync(); st.subcategoryId = st.subcategoryId === b.dataset.sub ? null : b.dataset.sub; draw(); }
+      else if ('newcat' in b.dataset) {
+        sync();
+        const name = await promptDialog({ title: `New ${st.type} category`, label: 'Category name' });
+        if (name?.trim()) { const c = await cats.create({ name, type: st.type }); st.categoryId = c.id; st.subcategoryId = null; draw(); }
+      } else if ('newsub' in b.dataset) {
+        sync();
+        const name = await promptDialog({ title: `New subcategory in ${cats.name(st.categoryId)}`, label: 'Subcategory name' });
+        if (name?.trim()) { const c = await cats.create({ name, type: st.type, parentId: st.categoryId }); st.subcategoryId = c.id; draw(); }
+      } else if ('rmphoto' in b.dataset) { sync(); st.receiptPhoto = null; draw(); }
+      else if ('again' in b.dataset) save(true);
+      else if ('delete' in b.dataset) {
+        if (await confirmDialog('Delete this entry? It will also be removed from the Hub at your next sync.', { okText: 'Delete', danger: true })) {
+          await tx.remove(existing.id);
+          toast('Entry deleted');
+          history.length > 1 ? history.back() : ctx.go('transactions');
+        }
+      }
+    };
+    $('#f', root).onsubmit = (e) => { e.preventDefault(); save(false); };
+    const dateIn = $('#date', root);
+    if (dateIn) dateIn.onclick = () => { try { dateIn.showPicker?.(); } catch { /* ignore */ } };
+    if (dateIn) dateIn.onchange = () => { sync(); if (st.date) draw(); };
+    const acc = $('#account', root);
+    if (acc && st.type === 'transfer') acc.onchange = () => { sync(); draw(); };
+    const photo = $('#photo', root);
+    if (photo) photo.onchange = async () => {
+      if (!photo.files[0]) return;
+      try { sync(); st.receiptPhoto = await compressImage(photo.files[0]); draw(); } catch (err) { toast(err.message); }
+    };
+  }
+
+  draw();
+}
+
+// ---------------------------------------------------------------- transactions
+
+let shown = 200;
+const sortState = { key: 'date', dir: -1 };
+
+export async function transactionsScreen(root, ctx, { scope }) {
+  const hub = scope === 'all';
+  const P = ctx.params;
+  const f = {
+    q: P.get('q') || '', m: P.get('m') || thisMonth(), t: P.get('t') || '', c: P.get('c') || '', a: P.get('a') || '',
+    u: P.get('u') || '', min: P.get('min') || '', max: P.get('max') || '',
+  };
+  const setF = (patch) => {
+    const n = { ...f, ...patch };
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(n)) if (v && !(k === 'm' && v === thisMonth())) qs.set(k, v);
+    history.replaceState(null, '', '#/transactions' + (qs.toString() ? '?' + qs : ''));
+    shown = 200;
+    ctx.refresh();
+  };
+
+  const filter = { scope, text: f.q, type: f.t, accountId: f.a, memberId: f.u, min: +f.min || 0, max: +f.max || 0 };
+  if (f.c.startsWith('s:')) filter.subcategoryId = f.c.slice(2);
+  else if (f.c.startsWith('c:')) filter.categoryId = f.c.slice(2);
+  if (/^\d{4}-\d{2}$/.test(f.m)) Object.assign(filter, monthRange(f.m));
+  else if (/^\d{4}$/.test(f.m)) Object.assign(filter, { from: `${f.m}-01-01`, to: `${f.m}-12-31` });
+  let list = tx.query(filter);
+  const tot = reports.totals(list);
+  const accounts = hub ? db.live('accounts') : tx.myAccounts({ includeArchived: true });
+  const isMonth = /^\d{4}-\d{2}$/.test(f.m);
+
+  if (hub) {
+    const dir = sortState.dir;
+    const keyFn = { date: (t) => t.date, amount: (t) => t.amount, member: (t) => tx.memberName(t.ownerId), category: (t) => cats.pathLabel(t) }[sortState.key];
+    list = [...list].sort((a, b) => (keyFn(a) > keyFn(b) ? dir : keyFn(a) < keyFn(b) ? -dir : 0));
+  }
+  const page = list.slice(0, shown);
+
+  const hasChanges = !hub && db.all('transactions').some((t) => t.ownerId === cfg.memberId && (!cfg.lastExportAt || t.updatedAt > cfg.lastExportAt));
+  root.innerHTML = `
+    ${hub ? '' : installBanner() + syncReminder(hasChanges)}
+    <div class="card">
+      <div class="row">
+        ${isMonth ? '<button class="btn small" data-mnav="-1" aria-label="Previous month">‹</button>' : ''}
+        <b class="grow" style="text-align:center">${isMonth ? esc(monthLabel(f.m)) : f.m === 'all' ? 'All time' : esc(f.m)}</b>
+        ${isMonth ? '<button class="btn small" data-mnav="1" aria-label="Next month">›</button>' : ''}
+        <button class="btn small" data-allmonths>${f.m === 'all' ? 'This month' : 'All time'}</button>
+      </div>
+      <input id="q" type="search" placeholder="Search notes, tags…" value="${esc(f.q)}" aria-label="Search" style="margin-top:10px">
+      <details class="more-filters" ${f.t || f.c || f.a || f.u || f.min || f.max ? 'open' : ''}><summary>Filters</summary><div class="filters">
+        <select id="ftype" aria-label="Type"><option value="">All types</option>${['expense', 'income', 'transfer'].map((t) => `<option value="${t}" ${f.t === t ? 'selected' : ''}>${t[0].toUpperCase() + t.slice(1)}</option>`).join('')}</select>
+        <select id="fcat" aria-label="Category">${catFilterOptions(f.c)}</select>
+        <select id="facc" aria-label="Account"><option value="">All accounts</option>${accounts.map((a) => `<option value="${esc(a.id)}" ${f.a === a.id ? 'selected' : ''}>${esc(a.name)}${hub ? ` (${esc(tx.memberName(a.ownerId))})` : ''}</option>`).join('')}</select>
+        ${hub ? `<select id="fmem" aria-label="Member">${memberOptions(tx.members(), f.u)}</select>` : ''}
+        <input id="fmin" type="number" inputmode="decimal" placeholder="Min amount" value="${esc(f.min)}" aria-label="Minimum amount">
+        <input id="fmax" type="number" inputmode="decimal" placeholder="Max amount" value="${esc(f.max)}" aria-label="Maximum amount">
+      </div></details>
+      <div class="row between">
+        <span class="muted small">${list.length} entries · <span class="income num">+${money(tot.income)}</span> · <span class="expense num">−${money(tot.expense)}</span></span>
+        <span class="row"><button class="btn small" data-csv>⬇ CSV</button>${hub ? '<button class="btn small" data-bulk disabled>Recategorize</button>' : ''}</span>
+      </div>
+    </div>
+    ${list.length ? (hub ? hubTable(page) : groupedList(page)) : empty('No entries here.', 'Tap the green <b>＋</b> below to add one, or try another month.')}
+    ${list.length > shown ? `<button class="btn" style="width:100%" data-more-rows>Show ${Math.min(200, list.length - shown)} more (${list.length - shown} left)</button>` : ''}
+  `;
+
+  const debounce = (fn, ms = 300) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+  $('#q', root).oninput = debounce((e) => setF({ q: e.target.value }));
+  $('#ftype', root).onchange = (e) => setF({ t: e.target.value });
+  $('#fcat', root).onchange = (e) => setF({ c: e.target.value });
+  $('#facc', root).onchange = (e) => setF({ a: e.target.value });
+  $('#fmem', root)?.addEventListener('change', (e) => setF({ u: e.target.value }));
+  $('#fmin', root).onchange = (e) => setF({ min: e.target.value });
+  $('#fmax', root).onchange = (e) => setF({ max: e.target.value });
+
+  const selected = new Set();
+  const bulkBtn = $('[data-bulk]', root);
+  root.onclick = async (e) => {
+    const b = e.target.closest('button');
+    const th = e.target.closest('th[data-sort]');
+    if (th) {
+      sortState.dir = sortState.key === th.dataset.sort ? -sortState.dir : th.dataset.sort === 'date' || th.dataset.sort === 'amount' ? -1 : 1;
+      sortState.key = th.dataset.sort;
+      return ctx.refresh();
+    }
+    if (!b) return;
+    if (b.dataset.mnav) setF({ m: addMonths(f.m, Number(b.dataset.mnav)) });
+    else if ('allmonths' in b.dataset) setF({ m: f.m === 'all' ? thisMonth() : 'all' });
+    else if ('moreRows' in b.dataset) { shown += 200; ctx.refresh(); }
+    else if ('csv' in b.dataset) { download(`mm-transactions-${stamp()}.csv`, reports.toCSV(list), 'text/csv'); }
+    else if ('bulk' in b.dataset) bulkRecategorize([...selected], ctx);
+  };
+  root.onchange = (e) => {
+    if (e.target.matches('[data-sel]')) {
+      e.target.checked ? selected.add(e.target.dataset.sel) : selected.delete(e.target.dataset.sel);
+    } else if (e.target.matches('[data-selall]')) {
+      $$('[data-sel]', root).forEach((c) => { c.checked = e.target.checked; e.target.checked ? selected.add(c.dataset.sel) : selected.delete(c.dataset.sel); });
+    } else return;
+    if (bulkBtn) { bulkBtn.disabled = !selected.size; bulkBtn.textContent = selected.size ? `Recategorize (${selected.size})` : 'Recategorize'; }
+  };
+}
+
+function hubTable(list) {
+  const arrow = (k) => (sortState.key === k ? (sortState.dir > 0 ? ' ▲' : ' ▼') : '');
+  return `<div class="card" style="padding:0"><div class="table-wrap"><table class="tbl">
+    <thead><tr><th><input type="checkbox" data-selall aria-label="Select all"></th>
+      <th data-sort="date">Date${arrow('date')}</th><th data-sort="member">Member${arrow('member')}</th><th data-sort="category">Category${arrow('category')}</th>
+      <th>Note</th><th>Account</th><th class="r" data-sort="amount">Amount${arrow('amount')}</th><th></th></tr></thead>
+    <tbody>${list.map((t) => `<tr>
+      <td><input type="checkbox" data-sel="${esc(t.id)}" aria-label="Select"></td>
+      <td class="num">${esc(t.date)}</td>
+      <td><span class="dot" style="background:${esc(tx.memberColor(t.ownerId))}"></span> ${esc(tx.memberName(t.ownerId))}</td>
+      <td>${esc(cats.pathLabel(t))}</td><td>${esc(t.note)}${t.receiptPhoto ? ' 📎' : ''}</td><td>${esc(tx.accountName(t.accountId))}</td>
+      <td class="r num ${t.type}">${t.type === 'income' ? '+' : t.type === 'expense' ? '−' : ''}${money(t.amount)}</td>
+      <td>${tx.canEdit(t) ? `<a href="#/add?id=${esc(t.id)}" aria-label="Edit">✎</a>` : ''}</td></tr>`).join('')}</tbody></table></div></div>`;
+}
+
+function bulkRecategorize(ids, ctx) {
+  const rows = ids.map((id) => db.get('transactions', id)).filter(Boolean);
+  const types = new Set(rows.map((t) => t.type));
+  if (types.size !== 1 || types.has('transfer')) { toast('Select entries of one type (all expense, or all income).'); return; }
+  const type = [...types][0];
+  const tree = cats.tree(type);
+  const s = sheet(`Recategorize ${rows.length} entries`, `
+    <form class="stack">
+      <label class="field"><span>Category</span><select name="cat" required><option value="">Choose…</option>${tree.map(({ cat }) => `<option value="${esc(cat.id)}">${esc(cat.icon)} ${esc(cat.name)}</option>`).join('')}</select></label>
+      <label class="field"><span>Subcategory (optional)</span><select name="sub"><option value="">None</option></select></label>
+      <p class="muted small">This changes the Hub's copy of these entries. Members keep their own category on their phones.</p>
+      <div class="row end"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary">Apply</button></div>
+    </form>`);
+  const form = $('form', s.el);
+  form.cat.onchange = () => {
+    const subs = tree.find((x) => x.cat.id === form.cat.value)?.subs || [];
+    form.sub.innerHTML = '<option value="">None</option>' + subs.map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
+  };
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    for (const t of rows) await tx.update(t.id, { categoryId: form.cat.value, subcategoryId: form.sub.value || null });
+    s.close();
+    toast(`${rows.length} entries updated`);
+    ctx.refresh();
+  };
+}
+
+// ---------------------------------------------------------------- reports
+
+export async function reportsScreen(root, ctx, { scope }) {
+  const hub = scope === 'all';
+  const P = ctx.params;
+  const mode = P.get('p') === 'year' ? 'year' : 'month';
+  const d = P.get('d') || (mode === 'year' ? thisMonth().slice(0, 4) : thisMonth());
+  const go = (patch) => {
+    const n = { p: mode, d, ...patch };
+    history.replaceState(null, '', `#/reports?p=${n.p}&d=${n.d}`);
+    ctx.refresh();
+  };
+  const range = mode === 'year' ? { from: `${d}-01-01`, to: `${d}-12-31` } : monthRange(d);
+  const list = tx.query({ scope, ...range });
+  const tot = reports.totals(list);
+  const exp = reports.byCategory(list, 'expense');
+  const inc = reports.byCategory(list, 'income');
+  const label = mode === 'year' ? d : monthLabel(d);
+  const trendEnd = mode === 'year' ? `${d}-12` : d;
+  const trend = reports.monthlyTrend(tx.query({ scope }), mode === 'year' ? 12 : 6, trendEnd);
+  const members = hub ? reports.byMember(list) : [];
+  const link = (cid, type) => `#/transactions?m=${d}&c=${cats.get(cid)?.parentId ? 's' : 'c'}:${cid}&t=${type}`;
+
+  const catTable = (rows, type) => rows.length ? `<table class="tbl drill"><thead><tr><th>Category</th><th class="r">Amount</th><th class="r">Share</th></tr></thead><tbody>
+    ${rows.map((c) => `<tr data-toggle="${esc(c.id)}"><td>${c.subs.length > 1 || c.subs[0]?.id !== 'none' ? '▸ ' : ''}${esc(c.icon)} ${esc(c.name)} <span class="muted small">(${c.count})</span>${c.id !== 'none' ? ` <a class="small" href="${link(c.id, type)}">view</a>` : ''}</td><td class="r num">${money(c.total)}</td><td class="r num">${Math.round((c.total / (type === 'expense' ? tot.expense : tot.income)) * 100)}%</td></tr>
+    ${c.subs.map((s) => `<tr class="sub-row" data-parent="${esc(c.id)}" hidden><td>${esc(s.name)} <span class="muted small">(${s.count})</span></td><td class="r num">${money(s.total)}</td><td class="r"><a href="${s.id === 'none' ? `#/transactions?m=${d}&c=c:${esc(c.id)}&t=${type}` : link(s.id, type)}">view</a></td></tr>`).join('')}`).join('')}
+  </tbody></table>` : '<p class="muted">Nothing recorded.</p>';
+
+  root.innerHTML = `
+    <div class="row between no-print" style="margin-bottom:12px">
+      <div class="seg" style="min-width:160px"><button data-p="month" class="${mode === 'month' ? 'on' : ''}">Monthly</button><button data-p="year" class="${mode === 'year' ? 'on' : ''}">Yearly</button></div>
+      <div class="row"><button class="btn small" data-nav="-1" aria-label="Previous">‹</button><b>${esc(label)}</b><button class="btn small" data-nav="1" aria-label="Next">›</button></div>
+      <div class="row"><button class="btn small" data-csv>⬇ CSV</button><button class="btn small" data-print>🖨 PDF</button></div>
+    </div>
+    <h2 class="muted small" style="display:none" id="print-title">${hub ? 'Family' : esc(cfg.memberName)} report: ${esc(label)}</h2>
+    <div class="grid stats">
+      <div class="card stat"><div class="label">Income</div><div class="value income">${money(tot.income)}</div></div>
+      <div class="card stat"><div class="label">Expense</div><div class="value expense">${money(tot.expense)}</div></div>
+      <div class="card stat"><div class="label">Saved</div><div class="value ${tot.net >= 0 ? 'income' : 'expense'}">${money(tot.net)}</div></div>
+      <div class="card stat"><div class="label">Savings rate</div><div class="value">${tot.income ? Math.round((tot.net / tot.income) * 100) : 0}%</div></div>
+    </div>
+    <div class="grid two">
+      <div class="card"><h2>Where the money went</h2>${exp.length ? '<div class="chart-box"><canvas id="c-cat" aria-label="Expense by category"></canvas></div>' : '<p class="muted">No expenses in this period.</p>'}</div>
+      <div class="card"><h2>${mode === 'year' ? '12-month trend' : '6-month trend'}</h2><div class="chart-box"><canvas id="c-trend" aria-label="Trend"></canvas></div></div>
+    </div>
+    <div class="grid two">
+      <div class="card"><h2>Expenses by category</h2><p class="muted small no-print">Tap a category to see its subcategories.</p>${catTable(exp, 'expense')}</div>
+      <div class="card"><h2>Income by category</h2>${catTable(inc, 'income')}</div>
+    </div>
+    ${hub ? `<div class="card"><h2>Member comparison</h2>${members.length ? `<div class="chart-box"><canvas id="c-mem" aria-label="Members"></canvas></div>
+      <table class="tbl"><thead><tr><th>Member</th><th class="r">Income</th><th class="r">Expense</th></tr></thead><tbody>${members.map((m) => `<tr><td><span class="dot" style="background:${esc(m.color)}"></span> ${esc(m.name)}</td><td class="r num income">${money(m.income)}</td><td class="r num expense">${money(m.expense)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No data.</p>'}</div>` : ''}
+  `;
+
+  root.onclick = (e) => {
+    const b = e.target.closest('button');
+    if (b?.dataset.p) return go({ p: b.dataset.p, d: b.dataset.p === 'year' ? d.slice(0, 4) : mode === 'year' ? `${d}-${thisMonth().slice(5)}` : d });
+    if (b?.dataset.nav) return go({ d: mode === 'year' ? String(Number(d) + Number(b.dataset.nav)) : addMonths(d, Number(b.dataset.nav)) });
+    if (b && 'csv' in b.dataset) return download(`mm-report-${d}.csv`, reports.toCSV(list), 'text/csv');
+    if (b && 'print' in b.dataset) { $('#print-title', root).style.display = 'block'; window.print(); return; }
+    const tr = e.target.closest('tr[data-toggle]');
+    if (tr) $$(`tr[data-parent="${CSS.escape(tr.dataset.toggle)}"]`, root).forEach((r) => { r.hidden = !r.hidden; });
+  };
+
+  const ink = { income: cssVar('--income'), expense: cssVar('--expense') };
+  if (exp.length) {
+    const top = exp.slice(0, 10);
+    const rest = exp.slice(10).reduce((s, c) => s + c.total, 0);
+    drawChart($('#c-cat', root), {
+      type: 'doughnut',
+      data: { labels: [...top.map((c) => c.name), ...(rest ? ['Other'] : [])], datasets: [{ data: [...top.map((c) => c.total), ...(rest ? [rest] : [])], backgroundColor: [...top.map((c) => c.color), ...(rest ? ['#94a3b8'] : [])], borderWidth: 0 }] },
+      options: { plugins: { legend: { position: 'right', labels: { boxWidth: 12 } }, tooltip: { callbacks: { label: (c) => ` ${c.label}: ${money(c.parsed)}` } } } },
+    });
+  }
+  drawChart($('#c-trend', root), {
+    type: 'bar',
+    data: { labels: trend.map((t) => monthLabel(t.month, false)), datasets: [{ label: 'Income', data: trend.map((t) => t.income), backgroundColor: ink.income }, { label: 'Expense', data: trend.map((t) => t.expense), backgroundColor: ink.expense }] },
+    options: { scales: { y: { beginAtZero: true } }, plugins: { tooltip: { callbacks: { label: (c) => ` ${c.dataset.label}: ${money(c.parsed.y)}` } } } },
+  });
+  if (members.length) {
+    drawChart($('#c-mem', root), {
+      type: 'bar',
+      data: { labels: members.map((m) => m.name), datasets: [{ label: 'Income', data: members.map((m) => m.income), backgroundColor: ink.income }, { label: 'Expense', data: members.map((m) => m.expense), backgroundColor: ink.expense }] },
+      options: { scales: { y: { beginAtZero: true } } },
+    });
+  }
+}
