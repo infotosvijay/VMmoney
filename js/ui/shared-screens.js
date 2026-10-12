@@ -47,15 +47,18 @@ export function txRow(t, { showMember = false, as = null } = {}) {
   const viewer = as || t.ownerId;
   const incoming = famX && ((t.direction === 'out' && t.toMemberId === viewer) || (t.direction === 'in' && t.ownerId === viewer));
   const counterpart = famX ? tx.memberName(viewer === t.ownerId ? t.toMemberId : t.ownerId) : '';
+  const wholeFamily = famX && as === 'family';
+  const fromId = t.direction === 'out' ? t.ownerId : t.toMemberId;
+  const toId = t.direction === 'out' ? t.toMemberId : t.ownerId;
   const title = isT
-    ? (famX ? `Transfer ${incoming ? 'from' : 'to'} ${counterpart}` : `${tx.accountName(t.accountId)} → ${tx.accountName(t.toAccountId)}`)
+    ? (famX ? (wholeFamily ? `Transfer ${tx.memberName(fromId)} → ${tx.memberName(toId)}` : `Transfer ${incoming ? 'from' : 'to'} ${counterpart}`) : `${tx.accountName(t.accountId)} → ${tx.accountName(t.toAccountId)}`)
     : sub?.name || c?.name || 'Uncategorized';
   const parts = [];
   if (sub && c) parts.push(c.name);
   if (showMember) parts.push(tx.memberName(t.ownerId));
   if (t.note) parts.push(t.note);
-  const sign = famX ? (incoming ? '+' : '−') : t.type === 'income' ? '+' : t.type === 'expense' ? '−' : '';
-  const amountClass = famX ? (incoming ? 'income' : 'expense') : t.type;
+  const sign = famX ? (wholeFamily ? '' : incoming ? '+' : '−') : t.type === 'income' ? '+' : t.type === 'expense' ? '−' : '';
+  const amountClass = famX ? (wholeFamily ? 'transfer' : incoming ? 'income' : 'expense') : t.type;
   const inner = `<span class="avatar">${ico}${payIcon(t)}</span><span class="main"><span class="title">${esc(title)}${t.receiptPhoto ? ' 📎' : ''}${t.recurringId ? ' 🔁' : ''}</span><span class="sub">${esc(parts.join(' · ') || tx.accountName(t.accountId))}</span></span><span class="num ${amountClass}">${sign}${money(t.amount)}</span>`;
   return tx.canEdit(t)
     ? `<a class="list-item" href="#/add?id=${esc(t.id)}">${inner}</a>`
@@ -310,13 +313,13 @@ export async function transactionsScreen(root, ctx) {
 
   const fsumText = () => 'Filters' + (activeCount ? ` (${activeCount} on)` : '');
   // Balance in hand (Online + Cash) is always shown on your own list, whatever the filters, so it can be checked here.
-  const balanceNow = hub || view.w === 'all' ? null : tx.inHand(view.w === 'other' ? view.memberId : cfg.memberId).total;
+  const balanceNow = hub || view.w === 'all' ? tx.inHandAll() : tx.inHand(view.w === 'other' ? view.memberId : cfg.memberId).total;
   const bottomHTML = () => `
         <span class="sumline small"><span title="Entries">🧾 ${list.length}</span><span class="income num" title="Income">+${moneyC(tot.income)}</span><span class="expense num" title="Spending">−${moneyC(tot.expense)}</span>${balanceNow != null ? `<span class="balchip num ${balanceNow < 0 ? 'expense' : ''}" title="Balance in hand">Bal ${moneyC(balanceNow)}</span>` : ''}</span>
         <span class="row">${activeCount ? '<button class="btn small" data-clear>✕ Clear filters</button>' : ''}${hub ? '<button class="btn small" data-csv>⬇ CSV</button><button class="btn small" data-bulk disabled>Recategorize</button>' : ''}</span>
 `;
   const resultsHTML = () => `
-    ${list.length ? (hub ? hubTable(page) : groupedList(page, { showMember: scope === 'all', as: view.w === 'me' ? cfg.memberId : view.w === 'other' ? view.memberId : null })) : empty('No entries here.', activeCount ? 'Nothing matches these filters. Tap <b>Clear filters</b> above.' : 'Tap the blue <b>＋</b> below to add one, or try another month.')}
+    ${list.length ? (hub ? hubTable(page) : groupedList(page, { showMember: scope === 'all', as: view.w === 'me' ? cfg.memberId : view.w === 'other' ? view.memberId : 'family' })) : empty('No entries here.', activeCount ? 'Nothing matches these filters. Tap <b>Clear filters</b> above.' : 'Tap the blue <b>＋</b> below to add one, or try another month.')}
     ${list.length > shown ? `<button class="btn" style="width:100%" data-more-rows>Show ${Math.min(200, list.length - shown)} more (${list.length - shown} left)</button>` : ''}
 `;
 
