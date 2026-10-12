@@ -173,31 +173,18 @@ function budgetSheet(existing, { hub }, ctx) {
 export async function accountsScreen(root, ctx) {
   const accs = tx.myAccounts({ includeArchived: true });
   root.innerHTML = `
-    <div class="row between" style="margin-bottom:12px"><span class="muted small">Your accounts. Balances come from your entries.</span><button class="btn primary small" data-add>+ Account</button></div>
-    <div class="card list" style="padding:0 12px">${accs.map((a) => `<div class="list-item"><span class="avatar">${{ cash: '💵', bank: '🏦', upi: '📲', card: '💳', wallet: '👛' }[a.type] || '💰'}</span>
-      <span class="main"><span class="title">${esc(a.name)} ${a.archived ? '<span class="chip">archived</span>' : ''}</span><span class="sub">${esc(labelOf(ACCOUNT_TYPES, a.type))}</span></span>
+    <p class="muted small">Every entry is paid from <b>Online</b> (bank, UPI, card) or <b>Cash</b>. Balances come from your entries plus the opening balance you set here.</p>
+    <div class="card list" style="padding:0 12px">${accs.map((a) => `<div class="list-item"><span class="avatar">${a.type === 'cash' ? '💵' : '🏦'}</span>
+      <span class="main"><span class="title">${esc(a.name)}</span><span class="sub">Opening balance ${money(a.openingBalance || 0)}</span></span>
       <span class="num">${money(tx.accountBalance(a))}</span><button class="btn small" data-edit="${esc(a.id)}">Edit</button></div>`).join('')}</div>`;
-  root.onclick = (e) => {
+  root.onclick = async (e) => {
     const b = e.target.closest('button');
-    if (!b) return;
-    if ('add' in b.dataset) accountSheet(null, ctx);
-    else if (b.dataset.edit) accountSheet(db.get('accounts', b.dataset.edit), ctx);
-  };
-}
-
-function accountSheet(acc, ctx) {
-  const s = sheet(acc ? 'Edit account' : 'New account', `<form class="stack">
-    <label class="field"><span>Name</span><input name="name" value="${esc(acc?.name || '')}" required maxlength="40" placeholder="e.g. HDFC Savings"></label>
-    <label class="field"><span>Type</span><select name="type">${ACCOUNT_TYPES.map(([v, l]) => `<option value="${v}" ${acc?.type === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-    <label class="field"><span>Opening balance</span><input name="ob" type="number" inputmode="decimal" step="any" value="${esc(acc?.openingBalance ?? 0)}"></label>
-    ${acc ? `<label class="check"><input type="checkbox" name="arch" ${acc.archived ? 'checked' : ''}> Archived (hide from new entries)</label>` : ''}
-    <div class="row end"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary">Save</button></div></form>`);
-  const f = $('form', s.el);
-  f.onsubmit = async (e) => {
-    e.preventDefault();
-    if (acc) await db.update('accounts', acc.id, { name: f.name.value.trim(), type: f.type.value, openingBalance: Number(f.ob.value) || 0, archived: f.arch.checked });
-    else await tx.addAccount({ name: f.name.value, type: f.type.value, openingBalance: f.ob.value });
-    s.close(); ctx.refresh();
+    if (!b?.dataset.edit) return;
+    const acc = db.get('accounts', b.dataset.edit);
+    const v = await promptDialog({ title: `${acc.name}: opening balance`, label: 'Opening balance', type: 'number', value: String(acc.openingBalance || 0), help: 'The amount in this account before your first entry in the app.' });
+    if (v == null) return;
+    await db.update('accounts', acc.id, { openingBalance: Number(v) || 0 });
+    ctx.refresh();
   };
 }
 
@@ -246,7 +233,7 @@ export async function settingsScreen(root, ctx) {
       <p class="small">${cfg.persisted ? '✅ Storage is protected from automatic clean-up.' : '⚠️ The browser may clear this app\'s data if the device runs low on space. Install the app to your home screen to prevent that.'}</p>
       ${est ? `<p class="muted small">Using ${mb(est.usage || 0)} MB of about ${mb(est.quota || 0)} MB available.</p>` : ''}
       <div class="row"><button class="btn" data-csv>Import old entries (CSV)…</button></div>
-      <p class="muted small">Columns: Date, Type, Category, Subcategory, Amount, Account, Payment mode, Note (the same as this app's CSV export). Entries already here are skipped.</p>
+      <p class="muted small">Columns: Date, Type, Category, Subcategory, Amount, Account (Online or Cash), Note (the same as this app's CSV export). Entries already here are skipped.</p>
       <div class="row"><button class="btn" data-persist>Request protection</button><button class="btn danger" data-wipe>Erase all data on this device</button></div>
     </div>
     <div class="card stack"><h2>This device</h2>

@@ -2,6 +2,7 @@
 :root {
   --bg: #f4f6f8; --card: #ffffff; --text: #17202a; --muted: #64707d; --line: #e3e8ee;
   --brand: #0f766e; --brand-ink: #ffffff; --brand-soft: #d9f1ee;
+  --header: #1d4ed8; --header-ink: #ffffff; --plus: #1d4ed8;
   --income: #15803d; --expense: #c2410c; --warn: #b45309; --danger: #b91c1c;
   --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .08);
   --radius: 14px; --nav-h: 62px;
@@ -10,6 +11,7 @@
 :root[data-theme="dark"] {
   --bg: #0f1418; --card: #182027; --text: #e8edf2; --muted: #93a1ae; --line: #27323c;
   --brand: #2dd4bf; --brand-ink: #04211d; --brand-soft: #123532;
+  --header: #1e3a8a; --header-ink: #ffffff; --plus: #3b6cf0;
   --income: #4ade80; --expense: #fb923c; --warn: #fbbf24; --danger: #f87171;
   --shadow: none; color-scheme: dark;
 }
@@ -17,6 +19,7 @@
   :root[data-theme="auto"] {
     --bg: #0f1418; --card: #182027; --text: #e8edf2; --muted: #93a1ae; --line: #27323c;
     --brand: #2dd4bf; --brand-ink: #04211d; --brand-soft: #123532;
+    --header: #1e3a8a; --header-ink: #ffffff; --plus: #3b6cf0;
     --income: #4ade80; --expense: #fb923c; --warn: #fbbf24; --danger: #f87171;
     --shadow: none; color-scheme: dark;
   }
@@ -49,7 +52,7 @@ button { cursor: pointer; }
 #main-col { flex: 1; min-width: 0; padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 16px); }
 #topbar {
   position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 10px;
-  padding: calc(10px + env(safe-area-inset-top)) 16px 10px; background: var(--brand); color: var(--brand-ink);
+  padding: calc(10px + env(safe-area-inset-top)) 16px 10px; background: var(--header); color: var(--header-ink);
 }
 #topbar h1 { font-size: 1.15rem; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #topbar .btn { background: rgba(255,255,255,.18); color: inherit; border-color: transparent; }
@@ -68,7 +71,7 @@ button { cursor: pointer; }
 .nav-item.active { color: var(--brand); font-weight: 600; }
 .nav-item.add .ico {
   display: grid; place-items: center; width: 46px; height: 46px; margin-top: -18px; border-radius: 50%;
-  background: var(--brand); color: var(--brand-ink); font-size: 1.7rem; box-shadow: 0 3px 10px rgba(0,0,0,.25);
+  background: var(--plus); color: #fff; font-size: 1.7rem; box-shadow: 0 3px 10px rgba(0,0,0,.25);
 }
 
 @media (min-width: 900px) {

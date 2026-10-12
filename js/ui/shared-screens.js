@@ -2,7 +2,7 @@
 
 import * as db from '../db.js';
 import { cfg } from '../db.js';
-import { esc, otherMember, localDate, todayStr, thisMonth, addMonths, monthRange, monthLabel, dayLabel, PAYMENT_MODES, FREQUENCIES, stamp } from '../models.js';
+import { esc, otherMember, localDate, todayStr, thisMonth, addMonths, monthRange, monthLabel, dayLabel, FREQUENCIES, stamp } from '../models.js';
 import * as cats from '../categories.js';
 import * as tx from '../transactions.js';
 import * as recurring from '../recurring.js';
@@ -68,18 +68,21 @@ export async function entryScreen(root, ctx) {
   if (id && (!existing || existing.deleted)) { root.innerHTML = empty('That entry no longer exists.'); return; }
   if (existing && !tx.canEdit(existing)) { root.innerHTML = empty('You can only edit your own entries.'); return; }
 
-  const accounts = tx.myAccounts();
+  const accounts = tx.formAccounts(existing?.accountId);
   const st = existing
     ? { ...existing, amount: String(existing.amount), tagsText: (existing.tags || []).join(' '), repeat: '', xfer: existing.toMemberId ? 'member' : 'own', direction: existing.direction || 'out' }
     : {
         type: ctx.params.get('type') || 'expense', amount: '', date: todayStr(), categoryId: null, subcategoryId: null,
-        accountId: accounts.find((a) => a.id === cfg.lastAccountId)?.id || accounts[0]?.id || null, toAccountId: null,
-        paymentMode: cfg.lastPaymentMode || 'cash', note: '', tagsText: '', receiptPhoto: null, repeat: '', xfer: 'own', direction: 'out',
+        accountId: accounts[0]?.id || null, toAccountId: null,
+        note: '', tagsText: '', receiptPhoto: null, repeat: '', xfer: 'own', direction: 'out',
       };
 
   let focused = false;
   function draw() {
     const isT = st.type === 'transfer';
+    if (isT && st.xfer !== 'member' && accounts.length >= 2 && (!st.toAccountId || st.toAccountId === st.accountId)) {
+      st.toAccountId = (accounts.find((a) => a.id !== st.accountId) || accounts[1]).id;
+    }
     const other = otherMember(cfg.memberId);
     const mT = isT && st.xfer === 'member';
     const tree = isT ? [] : cats.tree(st.type, { includeArchived: false });
@@ -115,16 +118,13 @@ export async function entryScreen(root, ctx) {
         </div>
         ${picked ? `<div><div class="card-head"><b>${esc(picked.cat.name)}: subcategory <span class="muted small">(optional)</span></b><button type="button" class="btn small ghost" data-newsub>+ New</button></div>
           <div class="chips">${picked.subs.map((s) => `<button type="button" class="${s.id === st.subcategoryId ? 'on' : ''}" data-sub="${esc(s.id)}">${esc(s.name)}</button>`).join('') || '<span class="muted small">No subcategories yet.</span>'}</div></div>` : ''}`}
-        <div class="form-grid">
-          <label class="field"><span>${mT ? (st.direction === 'in' ? 'Received into' : 'Paid from') : isT ? 'From account' : 'Account'}</span>
-            <select id="account">${accounts.map((a) => `<option value="${esc(a.id)}" ${a.id === st.accountId ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></label>
-          ${mT ? '' : isT ? `<label class="field"><span>To account</span>
-            <select id="toaccount"><option value="">Choose…</option>${accounts.filter((a) => a.id !== st.accountId).map((a) => `<option value="${esc(a.id)}" ${a.id === st.toAccountId ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></label>`
-            : `<label class="field"><span>Payment mode</span>
-            <select id="mode">${PAYMENT_MODES.map(([v, l]) => `<option value="${v}" ${v === st.paymentMode ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`}
-          ${existing || isT ? '' : `<label class="field"><span>Repeat</span>
-            <select id="repeat"><option value="">Does not repeat</option>${FREQUENCIES.map(([v, l]) => `<option value="${v}" ${v === st.repeat ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`}
+        <div>
+          <span class="lbl">${mT ? (st.direction === 'in' ? 'Received into' : 'Paid from') : isT ? 'Move money' : st.type === 'income' ? 'Received into' : 'Paid from'}</span>
+          ${isT && !mT ? `<div class="seg">${[[accounts[0], accounts[1]], [accounts[1], accounts[0]]].map(([f, to]) => `<button type="button" data-xdir="${esc(f.id)}|${esc(to.id)}" class="${st.accountId === f.id ? 'on' : ''}">${esc(f.name)} → ${esc(to.name)}</button>`).join('')}</div>`
+            : `<div class="seg">${accounts.map((a) => `<button type="button" data-acc="${esc(a.id)}" class="${a.id === st.accountId ? 'on' : ''}">${esc(a.name)}</button>`).join('')}</div>`}
         </div>
+        ${existing || isT ? '' : `<label class="field"><span>Repeat</span>
+          <select id="repeat"><option value="">Does not repeat</option>${FREQUENCIES.map(([v, l]) => `<option value="${v}" ${v === st.repeat ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`}
         <label class="field"><span>Note</span><input id="note" maxlength="200" value="${esc(st.note)}" placeholder="What was it for?"></label>
         <label class="field"><span>Tags <span class="muted">(space separated)</span></span><input id="tags" value="${esc(st.tagsText)}" placeholder="#trip #diwali"></label>
         <div>
@@ -149,9 +149,6 @@ export async function entryScreen(root, ctx) {
   function sync() {
     const g = (s) => $(s, root);
     if (g('#amount')) st.amount = g('#amount').value;
-    if (g('#account')) st.accountId = g('#account').value;
-    if (g('#toaccount')) st.toAccountId = g('#toaccount').value || null;
-    if (g('#mode')) st.paymentMode = g('#mode').value;
     if (g('#date')) st.date = g('#date').value;
     if (g('#repeat')) st.repeat = g('#repeat').value;
     if (g('#note')) st.note = g('#note').value;
@@ -169,7 +166,7 @@ export async function entryScreen(root, ctx) {
     } else if (!st.categoryId) { err.textContent = 'Choose a category.'; return; }
     const tags = st.tagsText.split(/[\s,]+/).filter(Boolean).map((t) => (t.startsWith('#') ? t : `#${t}`));
     const data = {
-      type: st.type, amount, date: st.date, note: st.note.trim(), tags, paymentMode: st.paymentMode,
+      type: st.type, amount, date: st.date, note: st.note.trim(), tags, paymentMode: db.get('accounts', st.accountId)?.type === 'cash' ? 'cash' : 'online',
       categoryId: st.type === 'transfer' ? null : st.categoryId, subcategoryId: st.type === 'transfer' ? null : st.subcategoryId,
       accountId: st.accountId, toAccountId: st.type === 'transfer' && st.xfer !== 'member' ? st.toAccountId : null, receiptPhoto: st.receiptPhoto || null,
       toMemberId: st.type === 'transfer' && st.xfer === 'member' ? otherMember(cfg.memberId).id : null,
@@ -183,8 +180,6 @@ export async function entryScreen(root, ctx) {
         await recurring.create(tpl, st.repeat, recurring.nextDate(st.date, st.repeat));
       }
     }
-    await db.setCfg('lastAccountId', st.accountId);
-    await db.setCfg('lastPaymentMode', st.paymentMode);
     toast(existing ? 'Entry updated' : 'Saved');
     if (again) {
       Object.assign(st, { amount: '', note: '', tagsText: '', receiptPhoto: null, repeat: '', subcategoryId: null });
@@ -198,6 +193,8 @@ export async function entryScreen(root, ctx) {
       const b = e.target.closest('button');
       if (!b) return;
       if (b.dataset.type) { sync(); st.type = b.dataset.type; st.categoryId = null; st.subcategoryId = null; draw(); }
+      else if (b.dataset.acc) { sync(); st.accountId = b.dataset.acc; draw(); }
+      else if (b.dataset.xdir) { sync(); [st.accountId, st.toAccountId] = b.dataset.xdir.split('|'); draw(); }
       else if (b.dataset.date) { sync(); st.date = b.dataset.date; draw(); }
       else if (b.dataset.xfer) { sync(); st.xfer = b.dataset.xfer; draw(); }
       else if (b.dataset.dir) { sync(); st.direction = b.dataset.dir; draw(); }
@@ -225,8 +222,6 @@ export async function entryScreen(root, ctx) {
     const dateIn = $('#date', root);
     if (dateIn) dateIn.onclick = () => { try { dateIn.showPicker?.(); } catch { /* ignore */ } };
     if (dateIn) dateIn.onchange = () => { sync(); if (st.date) draw(); };
-    const acc = $('#account', root);
-    if (acc && st.type === 'transfer') acc.onchange = () => { sync(); draw(); };
     const photo = $('#photo', root);
     if (photo) photo.onchange = async () => {
       if (!photo.files[0]) return;
@@ -299,7 +294,7 @@ export async function transactionsScreen(root, ctx, { scope }) {
         <span class="row"><button class="btn small" data-csv>⬇ CSV</button>${hub ? '<button class="btn small" data-bulk disabled>Recategorize</button>' : ''}</span>
       </div>
     </div>
-    ${list.length ? (hub ? hubTable(page) : groupedList(page)) : empty('No entries here.', 'Tap the green <b>＋</b> below to add one, or try another month.')}
+    ${list.length ? (hub ? hubTable(page) : groupedList(page)) : empty('No entries here.', 'Tap the blue <b>＋</b> below to add one, or try another month.')}
     ${list.length > shown ? `<button class="btn" style="width:100%" data-more-rows>Show ${Math.min(200, list.length - shown)} more (${list.length - shown} left)</button>` : ''}
   `;
 

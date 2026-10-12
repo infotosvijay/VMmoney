@@ -61,11 +61,11 @@ const csvCell = (v) => {
 };
 
 export function toCSV(list) {
-  const head = ['Date', 'Member', 'Type', 'Category', 'Subcategory', 'Amount', 'Account', 'Payment mode', 'Note', 'Tags'];
+  const head = ['Date', 'Member', 'Type', 'Category', 'Subcategory', 'Amount', 'Account', 'Note', 'Tags'];
   const rows = list.map((t) => [
     t.date, tx.memberName(t.ownerId), t.type,
     t.type === 'transfer' ? '' : cats.name(t.categoryId), t.subcategoryId ? cats.name(t.subcategoryId) : '',
-    t.amount, tx.accountName(t.accountId), t.paymentMode, t.note, (t.tags || []).join(' '),
+    t.amount, tx.accountName(t.accountId), t.note, (t.tags || []).join(' '),
   ]);
   return '﻿' + [head, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n'); // BOM so Excel reads UTF-8
 }

@@ -1,5 +1,5 @@
 // Import old entries from a CSV (same columns as this app's CSV export, or a simple bank/Excel sheet).
-// Columns recognised by header name: Date, Member, Type, Category, Subcategory, Amount, Account, Payment mode, Note, Tags.
+// Columns recognised by header name: Date, Member, Type, Category, Subcategory, Amount, Account (Online or Cash), Note, Tags. A "Payment mode" column of cash is also understood.
 
 import * as db from './db.js';
 import { cfg } from './db.js';
@@ -115,8 +115,7 @@ export function planImport(text) {
 const keyOf = (owner, date, type, amount, note) => `${owner}|${date}|${type}|${Number(amount).toFixed(2)}|${String(note || '').trim().toLowerCase()}`;
 
 export async function applyImport(plan) {
-  const accounts = tx.myAccounts();
-  const fallback = accounts[0]?.id || null;
+  const fallback = tx.onlineAccount()?.id || null;
   const made = new Map();
   let n = 0;
   for (const it of plan.items) {
@@ -134,11 +133,12 @@ export async function applyImport(plan) {
         subcategoryId = s.id;
       }
     }
-    const acc = accounts.find((a) => a.name.toLowerCase() === it.accountName.toLowerCase());
+    const wantCash = /cash/i.test(it.accountName) || (!it.accountName && it.mode === 'cash');
+    const acc = wantCash ? tx.cashAccount() : tx.onlineAccount();
     await tx.add({
       ownerId: it.owner, type: it.type, amount: it.amount, date: it.date, note: it.note,
       categoryId, subcategoryId, accountId: acc?.id || fallback,
-      paymentMode: ['cash', 'upi', 'card', 'netbanking'].includes(it.mode) ? it.mode : 'cash',
+      paymentMode: wantCash ? 'cash' : 'online',
       tags: it.tags.split(/[\s,]+/).filter(Boolean).map((t) => (t.startsWith('#') ? t : `#${t}`)),
     }, { silent: true });
     n++;

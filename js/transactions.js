@@ -12,7 +12,7 @@ export async function add(data) {
     ...base(cfg.memberId),
     type: 'expense', amount: 0, date: todayStr(),
     categoryId: null, subcategoryId: null, accountId: null, toAccountId: null,
-    paymentMode: 'cash', note: '', toMemberId: null, direction: null, tags: [], receiptPhoto: null, recurringId: null,
+    paymentMode: 'online', note: '', toMemberId: null, direction: null, tags: [], receiptPhoto: null, recurringId: null,
     ...data,
   };
   return db.put('transactions', t);
@@ -40,14 +40,30 @@ export function query(f = {}) {
 
 // ---- accounts ----
 
-export const myAccounts = ({ includeArchived = false } = {}) =>
-  db.live('accounts').filter((a) => a.ownerId === cfg.memberId && (includeArchived || !a.archived));
+const ACC_ORDER = { online: 0, cash: 1 };
+const accKey = (a) => (a.id.endsWith('-online') ? 'online' : a.id.endsWith('-cash') ? 'cash' : 'other');
 
+/** Online first, then Cash, then any older accounts. */
+export const myAccounts = ({ includeArchived = false } = {}) =>
+  db.live('accounts')
+    .filter((a) => a.ownerId === cfg.memberId && (includeArchived || !a.archived))
+    .sort((a, b) => (ACC_ORDER[accKey(a)] ?? 9) - (ACC_ORDER[accKey(b)] ?? 9));
+
+export const onlineAccount = () => db.get('accounts', `acc-${cfg.memberId}-online`);
+export const cashAccount = () => db.get('accounts', `acc-${cfg.memberId}-cash`);
+
+/** The accounts offered on an entry: Online and Cash (plus an older account only when editing an entry that uses it). */
+export function formAccounts(current) {
+  const list = [onlineAccount(), cashAccount()].filter(Boolean);
+  const extra = current && !list.some((a) => a.id === current) ? db.get('accounts', current) : null;
+  return extra ? [...list, extra] : list;
+}
+
+/** Every member has exactly two accounts to pay from: Online (default) and Cash. */
 export async function ensureDefaultAccount() {
-  if (myAccounts({ includeArchived: true }).length) return;
-  const a = { ...base(cfg.memberId), name: 'Cash', type: 'cash', openingBalance: 0, archived: false };
-  a.id = `acc-${cfg.memberId}-cash`;
-  await db.put('accounts', a, { silent: true });
+  const mk = (suffix, name, type) => ({ ...base(cfg.memberId), id: `acc-${cfg.memberId}-${suffix}`, name, type, openingBalance: 0, archived: false });
+  if (!db.get('accounts', `acc-${cfg.memberId}-online`)) await db.put('accounts', mk('online', 'Online', 'bank'), { silent: true });
+  if (!db.get('accounts', `acc-${cfg.memberId}-cash`)) await db.put('accounts', mk('cash', 'Cash', 'cash'), { silent: true });
 }
 
 export function accountBalance(acc) {
