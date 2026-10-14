@@ -94,14 +94,15 @@ export async function ensureDefaultAccount() {
 
 /**
  * A VJ <-> MM transfer that only ONE of you recorded still has to move BOTH balances, so nobody enters it twice.
- * The person who didn't record it gets it in (or out of) their Online account. If both recorded it, each side is
- * already booked in its own account and nothing is added here. Never counted as income or expense.
+ * The person who didn't record it gets it in (or out of) the same kind of account the recorder used: cash handed
+ * over lands in their Cash, an online payment in their Online. If both recorded it, each side is already booked in
+ * its own account and nothing is added here. Never counted as income or expense.
  */
-function transferAdjust(ownerId, upTo) {
+function transferAdjust(ownerId, kind, upTo) {
   let amount = 0;
   for (const e of transferEvents().events) {
     if (upTo && e.date > upTo) continue;
-    if (e.ids.length > 1 || e.by === ownerId) continue;
+    if (e.ids.length > 1 || e.by === ownerId || e.kind !== kind) continue;
     if (e.to === ownerId) amount += e.amount; // the other person paid me
     else if (e.from === ownerId) amount -= e.amount; // the other person recorded that I paid them
   }
@@ -110,7 +111,8 @@ function transferAdjust(ownerId, upTo) {
 
 export function accountBalance(acc, upTo = null) {
   let bal = Number(acc.openingBalance) || 0;
-  if (acc.id.endsWith('-online')) bal += transferAdjust(acc.ownerId, upTo);
+  const kind = accKey(acc);
+  if (kind !== 'other') bal += transferAdjust(acc.ownerId, kind, upTo);
   for (const t of db.live('transactions')) {
     if (upTo && t.date > upTo) continue; // balance as of a date
     if (t.accountId === acc.id) {
@@ -180,7 +182,8 @@ const dayNum = (iso) => Math.round(new Date(`${iso}T00:00:00Z`).getTime() / 8640
 export function transferEvents() {
   const evs = memberTransfers().map((t) => {
     const sent = t.direction === 'out';
-    return { id: t.id, from: sent ? t.ownerId : t.toMemberId, to: sent ? t.toMemberId : t.ownerId, amount: t.amount, date: t.date, by: t.ownerId };
+    return { id: t.id, from: sent ? t.ownerId : t.toMemberId, to: sent ? t.toMemberId : t.ownerId, amount: t.amount, date: t.date, by: t.ownerId,
+      kind: String(t.accountId || '').endsWith('-cash') ? 'cash' : 'online' };
   }).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   const used = new Set();
   const events = [];

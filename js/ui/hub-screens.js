@@ -2,7 +2,7 @@
 
 import * as db from '../db.js';
 import { cfg } from '../db.js';
-import { esc, thisMonth, monthLabel, monthRange } from '../models.js';
+import { esc, thisMonth, monthLabel, monthRange, addMonths } from '../models.js';
 import * as cats from '../categories.js';
 import * as tx from '../transactions.js';
 import * as reports from '../reports.js';
@@ -10,7 +10,7 @@ import * as budgets from '../budgets.js';
 import * as sync from '../sync.js';
 import * as hubfile from '../hubfile.js';
 import * as live from '../livesync.js';
-import { $, $$, money, toast, confirmDialog, promptDialog, pickFiles, shareOrDownload, empty, progress, relTime, daysSince, drawChart, cssVar, sheet } from './components.js';
+import { $, $$, money, toast, confirmDialog, promptDialog, pickFiles, shareOrDownload, empty, progress, relTime, daysSince, drawChart, cssVar, sheet, onSwipe } from './components.js';
 import { entryScreen, transactionsScreen, reportsScreen } from './shared-screens.js';
 import { positionScreen, positionCard } from './position-screens.js';
 import { categoryDetailScreen, categoryTitle, categoryBack } from './stats-screens.js';
@@ -23,37 +23,46 @@ const askPw = (n) => promptDialog({ title: 'Password needed', label: `Password f
 function transferNote() {
   const net = tx.netVjToMm();
   if (!tx.memberTransfers().length) return '';
-  return `<div class="banner info small">🤝 ${net === 0 ? 'VJ and MM are even on transfers.' : net > 0 ? `VJ has transferred ${money(net)} more to MM than received.` : `MM has transferred ${money(-net)} more to VJ than received.`} <a href="#/transactions?t=transfer&m=all">See transfers</a></div>`;
+  // A running total of money moved between the two of you, not a mismatch: one entry from either person is enough.
+  return `<div class="banner info small">🤝 Transfers so far: ${net === 0 ? 'VJ and MM are even' : net > 0 ? `VJ → MM ${money(net)} (net)` : `MM → VJ ${money(-net)} (net)`} <a href="#/transactions?t=transfer&m=all">See transfers</a></div>`;
 }
 
 async function dashboardScreen(root, ctx) {
-  const month = thisMonth();
+  const cur = thisMonth();
+  const asked = ctx.params.get('m') || '';
+  const month = /^\d{4}-\d{2}$/.test(asked) && asked <= cur ? asked : cur;
+  const upTo = month < cur ? monthRange(month).to : null; // "In hand" as it stood at the end of a past month
   const list = tx.query({ scope: 'all', ...monthRange(month) });
   const tot = reports.totals(list);
   const top = reports.byCategory(list).slice(0, 6);
   const members = reports.byMember(list);
   const sts = budgets.statuses({ month }).slice(0, 6);
   const pend = cats.pending().length;
-  const trend = reports.monthlyTrend(tx.query({ scope: 'all' }), 6);
+  const trend = reports.monthlyTrend(tx.query({ scope: 'all' }), 6, month);
   const others = tx.members().filter((m) => m.id !== cfg.memberId);
 
   root.innerHTML = `
     ${hubfile.supported && !hubfile.status.linked ? `<div class="banner"><b>Link your master file</b><p class="small">Save everything to a family.json on this computer so nothing is ever lost.</p><div class="row"><a class="btn primary small" href="#/masterfile">Set up</a></div></div>` : ''}
+    <div class="row between" style="margin-bottom:12px">
+      <button class="btn small" data-mnav="-1" aria-label="Previous month">‹</button>
+      <b>${esc(monthLabel(month))}</b>
+      <button class="btn small" data-mnav="1" aria-label="Next month" ${month >= cur ? 'disabled' : ''}>›</button>
+    </div>
     ${pend ? `<div class="banner info"><b>${pend} new ${pend === 1 ? 'category' : 'categories'} to review</b><div class="row"><a class="btn small primary" href="#/categories">Review</a></div></div>` : ''}
     <div class="grid stats">
       <div class="card stat"><div class="label">Family income · ${esc(monthLabel(month, false))}</div><div class="value income">${money(tot.income)}</div></div>
       <div class="card stat"><div class="label">Family expense</div><div class="value expense">${money(tot.expense)}</div></div>
       <div class="card stat"><div class="label">Saved</div><div class="value ${tot.net >= 0 ? 'income' : 'expense'}">${money(tot.net)}</div></div>
-      <div class="card stat"><div class="label">Entries this month</div><div class="value">${list.length}</div></div>
+      <div class="card stat"><div class="label">Entries</div><div class="value"><a href="#/transactions?m=${month}" style="color:inherit">${list.length}</a></div></div>
     </div>
     ${positionCard()}
     ${transferNote()}
     <div class="grid two">
-      <div class="card"><h2>Per member</h2>${members.length ? `<table class="tbl"><thead><tr><th>Member</th><th class="r">Income</th><th class="r">Expense</th><th class="r">In hand</th></tr></thead><tbody>${members.map((m) => `<tr><td><span class="dot" style="background:${esc(m.color)}"></span> ${esc(m.name)}</td><td class="r num income">${money(m.income)}</td><td class="r num expense">${money(m.expense)}</td><td class="r num">${money(tx.inHand(m.id).total)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No entries this month.</p>'}</div>
+      <div class="card"><h2>Per member</h2>${members.length ? `<table class="tbl"><thead><tr><th>Member</th><th class="r">Income</th><th class="r">Expense</th><th class="r">In hand</th></tr></thead><tbody>${members.map((m) => `<tr><td><span class="dot" style="background:${esc(m.color)}"></span> ${esc(m.name)}</td><td class="r num income">${money(m.income)}</td><td class="r num expense">${money(m.expense)}</td><td class="r num">${money(tx.inHand(m.id, upTo).total)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No entries in this month.</p>'}</div>
       <div class="card"><h2>6-month trend</h2><div class="chart-box"><canvas id="c-trend"></canvas></div></div>
     </div>
     <div class="grid two">
-      <div class="card"><div class="card-head"><h2>Top categories</h2><a class="small" href="#/reports">Reports</a></div>
+      <div class="card"><div class="card-head"><h2>Top categories</h2><a class="small" href="#/reports?d=${month}">Reports</a></div>
         ${top.length ? top.map((c) => `<div style="margin-bottom:10px"><div class="row between small"><span>${esc(c.icon)} ${esc(c.name)}</span><span class="num">${money(c.total)}</span></div>${progress((c.total / tot.expense) * 100)}</div>`).join('') : '<p class="muted">Nothing yet.</p>'}</div>
       <div class="card"><div class="card-head"><h2>Budget status</h2><a class="small" href="#/budgets">Manage</a></div>
         ${sts.length ? sts.map((s) => `<div style="margin-bottom:10px"><div class="row between small"><b>${esc(s.label)} <span class="muted">${s.budget.scope === 'family' ? '' : '· ' + esc(tx.memberName(s.budget.memberId))}</span></b><span class="${s.level === 'over' ? 'danger-text' : ''}">${money(s.used)} / ${money(s.budget.limit)}</span></div>${progress(s.pct, s.level)}</div>`).join('') : '<p class="muted">No budgets set.</p>'}</div>
@@ -68,6 +77,21 @@ async function dashboardScreen(root, ctx) {
     type: 'bar',
     data: { labels: trend.map((t) => monthLabel(t.month, false)), datasets: [{ label: 'Income', data: trend.map((t) => t.income), backgroundColor: cssVar('--income') }, { label: 'Expense', data: trend.map((t) => t.expense), backgroundColor: cssVar('--expense') }] },
     options: { scales: { y: { beginAtZero: true } } },
+  });
+
+  const showMonth = (next) => {
+    history.replaceState(null, '', next === cur ? '#/dashboard' : `#/dashboard?m=${next}`);
+    ctx.refresh();
+  };
+  root.onclick = (e) => {
+    const b = e.target.closest('[data-mnav]');
+    if (!b || b.disabled) return;
+    showMonth(addMonths(month, Number(b.dataset.mnav)));
+  };
+  onSwipe(root, (dir) => {
+    const next = addMonths(month, dir === 'next' ? 1 : -1);
+    if (next > cur) return false;
+    showMonth(next);
   });
 }
 
