@@ -41,7 +41,7 @@ export function txRow(t, { showMember = false, as = null } = {}) {
   const c = cats.get(t.categoryId);
   const sub = cats.get(t.subcategoryId);
   const isT = t.type === 'transfer';
-  const ico = isT ? (t.toMemberId ? '🤝' : '🔁') : c?.icon || '🏷️';
+  const ico = isT ? (t.toMemberId ? '🤝' : '🔁') : sub ? cats.icon(sub) : c?.icon || '🏷️';
   // For a VJ <-> MM transfer, say who it came from / went to, as seen by `as` (default: the person who recorded it)
   const famX = isT && t.toMemberId;
   const viewer = as || t.ownerId;
@@ -122,6 +122,8 @@ export async function entryScreen(root, ctx) {
     const picked = tree.find((x) => x.cat.id === st.categoryId);
     // an archived category on an old entry should still show as selected
     const archivedPick = existing && st.categoryId && !picked ? cats.get(st.categoryId) : null;
+    const subPicked = picked?.subs.find((x) => x.id === st.subcategoryId);
+    const archivedSub = existing && picked && st.subcategoryId && !subPicked ? cats.get(st.subcategoryId) : null;
     root.innerHTML = `
       <form id="f" class="stack" novalidate>
         <div class="seg" role="tablist">
@@ -146,8 +148,11 @@ export async function entryScreen(root, ctx) {
             ${tree.filter(({ cat }) => !picked || cat.id === st.categoryId).map(({ cat }) => `<button type="button" class="cat-tile ${cat.id === st.categoryId ? 'on' : ''}" data-cat="${esc(cat.id)}"><span class="e">${esc(cat.icon)}</span>${esc(cat.name)}</button>`).join('')}
           </div>
         </div>
-        ${picked ? `<div><div class="card-head"><b>${esc(picked.cat.name)}: subcategory <span class="muted small">(optional)</span></b><button type="button" class="btn small ghost" data-newsub>+ New</button></div>
-          <div class="chips">${picked.subs.map((s) => `<button type="button" class="${s.id === st.subcategoryId ? 'on' : ''}" data-sub="${esc(s.id)}">${esc(s.name)}</button>`).join('') || '<span class="muted small">No subcategories yet.</span>'}</div></div>` : ''}`}
+        ${picked ? `<div><div class="card-head"><b>${esc(picked.cat.name)}: subcategory <span class="muted small">(optional)</span></b>${subPicked || archivedSub ? '<span class="muted small">Tap it again to change</span>' : '<button type="button" class="btn small ghost" data-newsub>+ New</button>'}</div>
+          ${picked.subs.length || archivedSub ? `<div class="cat-grid ${subPicked || archivedSub ? 'collapsed' : ''}">
+            ${archivedSub ? `<button type="button" class="cat-tile on" disabled><span class="e">${esc(cats.icon(archivedSub))}</span>${esc(archivedSub.name)} (archived)</button>` : ''}
+            ${picked.subs.filter((s) => !subPicked || s.id === st.subcategoryId).map((s) => `<button type="button" class="cat-tile ${s.id === st.subcategoryId ? 'on' : ''}" data-sub="${esc(s.id)}"><span class="e">${esc(cats.icon(s))}</span>${esc(s.name)}</button>`).join('')}
+          </div>` : '<span class="muted small">No subcategories yet.</span>'}</div>` : ''}`}
         <div>
           <span class="lbl">${mT ? (st.direction === 'in' ? 'Received into' : 'Paid from') : isT ? 'Move money' : st.type === 'income' ? 'Received into' : 'Paid from'}</span>
           ${isT && !mT ? `<div class="seg">${[[accounts[0], accounts[1]], [accounts[1], accounts[0]]].map(([f, to]) => `<button type="button" data-xdir="${esc(f.id)}|${esc(to.id)}" class="${st.accountId === f.id ? 'on' : ''}">${esc(f.name)} → ${esc(to.name)}</button>`).join('')}</div>`

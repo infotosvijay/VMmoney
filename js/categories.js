@@ -40,9 +40,42 @@ const INCOME = [
   ['Other Income', '💰', ['Refunds', 'Cashback', 'Miscellaneous']],
 ];
 
+// Default subcategory icons, keyed "Main/Sub". Anything not listed falls back to its main category's icon.
+const SUB_ICONS = {
+  'Groceries/Mukku Kadai': '🏪', 'Groceries/New Store': '🏬', 'Groceries/Mahalakshmi': '🏪', 'Groceries/Super market': '🛒', 'Groceries/D Mart': '🏬',
+  'Groceries/Oil': '🫗', 'Groceries/Ration': '🧺', 'Groceries/Rice 🌾': '🌾', 'Groceries/Other': '📦',
+  'Transportation/VJ 🏍️ petrol ⛽': '🏍️', 'Transportation/MM Petrol ⛽': '🛵', 'Transportation/Car 🚗 petrol ⛽': '⛽', 'Transportation/Chennai': '🏙️',
+  'Transportation/Toll': '🛣️', 'Transportation/Bike service': '🔧', 'Transportation/Scooty Service': '🔧', 'Transportation/Car service': '🛠️',
+  'Transportation/Chennai to Kovilpatti': '🚌', 'Transportation/Kovilpatti to Chennai': '🚌', 'Transportation/Other': '📦', 'Transportation/Parking': '🅿️',
+  'Vegetables Fruits/MMM': '🥕', 'Vegetables Fruits/🥚 Egg': '🥚', 'Vegetables Fruits/🍌 Banana': '🍌', 'Vegetables Fruits/🥥 Coconut': '🥥',
+  'Vegetables Fruits/Fruits': '🍎', 'Vegetables Fruits/Elaneer': '🥥', 'Vegetables Fruits/Other': '📦',
+  'Chennai/Hotel': '🍽️', 'Chennai/Snacks': '🍿', 'Chennai/Room Items': '🛏️', 'Chennai/CHN TO KVP': '🚌', 'Chennai/KVP to CHN': '🚌',
+  'Chennai/Transport': '🚕', 'Chennai/Rent': '🔑', 'Chennai/Other': '📦',
+  'Snacks/Chennai': '🏙️', 'Snacks/Dhanlakshmi': '🍬', 'Snacks/Ganesh': '🍪', 'Snacks/Arun': '🍦', 'Snacks/Vadai': '🍩', 'Snacks/Chips kadai': '🥔',
+  'Snacks/Waffle': '🧇', 'Snacks/Other': '📦', 'Snacks/Bombay sweets': '🍬', 'Snacks/Hatusun': '🍨',
+  'Beauty/Poo': '🌸', 'Beauty/Haircut': '💇', 'Beauty/Dress': '👗', 'Beauty/Zumba': '💃', 'Beauty/Makeup': '💄', 'Beauty/Slippers': '🩴',
+  'Beauty/Shoe': '👟', 'Beauty/Other': '📦', 'Beauty/Ironing': '👔',
+  'Household/Gas': '🔥', 'Household/Utensils': '🍳', 'Household/Furniture': '🛋️', 'Household/Kitchen': '🥄', 'Household/Toiletries': '🧴',
+  'Household/Electric': '🔌', 'Household/Service': '🧰', 'Household/Other': '📦',
+  'Medical/Aadhi': '👦', 'Medical/Hashu': '👧', 'Medical/VJ': '👨', 'Medical/MM': '👩', 'Medical/Other': '📦', 'Medical/VJ Amma': '👵',
+  'Rent/Chennai Room': '🔑', 'Rent/Other': '📦',
+  'Kids/School': '🏫', 'Kids/Tuition': '📚', 'Kids/Toys': '🧸', 'Kids/Dress': '👕', 'Kids/Beauty': '🎀', 'Kids/Games': '🎮', 'Kids/Other': '📦', 'Kids/Printout': '🖨️',
+  'Other/Shortage': '➖', 'Other/Unknown': '❓', 'Other/Other': '📦', 'Other/Temple': '🛕', 'Other/Amma VJ': '👵', 'Other/Entertainment': '🎬',
+  'Internet/Home': '📶',
+  'Recharge/VJ BSNL': '📞', 'Recharge/VJ AIRTEL': '📞', 'Recharge/MM BSNL': '📞', 'Recharge/MM JIO': '📞', 'Recharge/VJ Amma': '👵', 'Recharge/Other': '📦',
+  'Hotel/Chennai': '🏙️', 'Hotel/Kovilpatti': '🍛', 'Hotel/Other': '📦',
+  'Future/Savings': '🐖', 'Future/Gold': '🪙', 'Future/Insurance': '🛡️', 'Future/Aadhi PPF': '👦', 'Future/Hashu SSY': '👧', 'Future/Other': '📦',
+  'Interest/Housing Loan': '🏠', 'Interest/Bank charges': '🏦', 'Interest/Other': '📦', 'Interest/Car Loan': '🚗',
+  'School/AV': '👦', 'School/HV': '👧',
+  'Non-Veg/Fish': '🐟', 'Non-Veg/Chicken': '🍗', 'Non-Veg/Mutton': '🍖', 'Non-Veg/Egg': '🥚', 'Non-Veg/Other': '📦',
+  'Salary/Monthly Salary': '💵', 'Salary/Bonus': '🎁', 'Salary/Allowances': '🧾', 'Business/Sales': '🛍️', 'Business/Services': '🧰',
+  'Investments/Interest': '🏦', 'Investments/Dividends': '📊', 'Investments/Maturity': '⏳', 'Rental/House Rent Received': '🔑',
+  'Gifts/Cash Gifts': '🧧', 'Other Income/Refunds': '↩️', 'Other Income/Cashback': '💸', 'Other Income/Miscellaneous': '📦',
+};
+
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-const SEED_VERSION = 2; // 2 = VJ & MM's own expense categories
+const SEED_VERSION = 3; // 2 = VJ & MM's own expense categories, 3 = subcategory icons
 
 /** Seed the default categories. IDs are deterministic so every device ends up with the same ones. */
 export async function seedDefaults() {
@@ -53,7 +86,7 @@ export async function seedDefaults() {
     const pid = `cat-${type}-${slug(name)}`;
     const color = COLORS[i % COLORS.length];
     recs.push(mk({ id: pid, name, type, parentId: null, icon, color, sortOrder: i }));
-    subs.forEach((s, j) => recs.push(mk({ id: `sub-${type}-${slug(name)}-${slug(s)}`, name: s, type, parentId: pid, icon: '', color, sortOrder: j })));
+    subs.forEach((s, j) => recs.push(mk({ id: `sub-${type}-${slug(name)}-${slug(s)}`, name: s, type, parentId: pid, icon: SUB_ICONS[`${name}/${s}`] || '', color, sortOrder: j })));
   });
   add('expense', EXPENSE);
   add('income', INCOME);
@@ -67,6 +100,10 @@ export async function seedDefaults() {
     const used = db.live('transactions').some((t) => t[key] === c.id);
     await db.put('categories', used ? { ...c, archived: true, updatedAt: now } : { ...c, deleted: true, updatedAt: now }, { silent: true });
   }
+  // Give untouched seeded subcategories their default icon. Keeps EPOCH: every device computes the same record.
+  const byId = new Map(recs.map((r) => [r.id, r]));
+  const iconed = db.all('categories').filter((c) => c.parentId && !c.icon && c.updatedAt === EPOCH && byId.get(c.id)?.icon);
+  await db.putMany('categories', iconed.map((c) => ({ ...c, icon: byId.get(c.id).icon })), { silent: true });
   const existing = new Set(db.all('categories').map((c) => c.id));
   await db.putMany('categories', recs.filter((r) => !existing.has(r.id)), { silent: true });
   await db.setCfg('categorySeed', SEED_VERSION);
@@ -75,6 +112,8 @@ export async function seedDefaults() {
 
 export const get = (id) => (id ? db.get('categories', id) : null);
 export const name = (id) => get(id)?.name || '(none)';
+/** A category's icon; a subcategory without its own falls back to its main category's. */
+export const icon = (c) => c?.icon || (c?.parentId ? get(c.parentId)?.icon : '') || '🏷️';
 
 /** Short label for a transaction's category path. */
 export function pathLabel(t) {

@@ -28,7 +28,7 @@ export async function categoriesScreen(root, ctx, { hub = false } = {}) {
   root.innerHTML = `
     ${pend.length ? `<div class="card"><div class="card-head"><h2>Review new categories <span class="badge">${pend.length}</span></h2></div>
       <p class="muted small">Created by family members. Accept, rename or merge each one, then send the cleaned list in the next family package.</p>
-      <div class="list">${pend.map((c) => `<div class="list-item"><span class="avatar">${esc(c.icon || '🏷️')}</span><span class="main"><span class="title">${esc(catLabel(c))}</span><span class="sub">${esc(c.type)} · by ${esc(tx.memberName(c.createdBy))} · ${cats.usageCount(c.id)} entries</span></span>
+      <div class="list">${pend.map((c) => `<div class="list-item"><span class="avatar">${esc(cats.icon(c))}</span><span class="main"><span class="title">${esc(catLabel(c))}</span><span class="sub">${esc(c.type)} · by ${esc(tx.memberName(c.createdBy))} · ${cats.usageCount(c.id)} entries</span></span>
         <span class="row"><button class="btn small primary" data-accept="${esc(c.id)}">Accept</button><button class="btn small" data-act="${esc(c.id)}">…</button></span></div>`).join('')}</div></div>` : ''}
     <div class="row between" style="margin-bottom:12px">
       <div class="seg" style="min-width:200px"><button data-ct="expense" class="${catType === 'expense' ? 'on' : ''}">Expense</button><button data-ct="income" class="${catType === 'income' ? 'on' : ''}">Income</button></div>
@@ -41,7 +41,7 @@ export async function categoriesScreen(root, ctx, { hub = false } = {}) {
           <span class="main"><span class="title">${esc(cat.name)} ${cat.archived ? '<span class="chip">archived</span>' : ''}${cat.pendingReview ? '<span class="chip">new</span>' : ''}</span><span class="sub">${subs.length} subcategories · ${cats.usageCount(cat.id)} entries</span></span>
           <span class="row" style="flex-wrap:nowrap"><button class="icon-btn" data-up="${esc(cat.id)}" aria-label="Move up">↑</button><button class="icon-btn" data-down="${esc(cat.id)}" aria-label="Move down">↓</button><button class="icon-btn" data-act="${esc(cat.id)}" aria-label="Actions">⋯</button></span>
         </div>
-        ${subs.map((s) => `<div class="list-item" style="padding-left:20px"><span class="main"><span class="title">${esc(s.name)} ${s.archived ? '<span class="chip">archived</span>' : ''}${s.pendingReview ? '<span class="chip">new</span>' : ''}</span><span class="sub">${cats.usageCount(s.id)} entries</span></span>
+        ${subs.map((s) => `<div class="list-item" style="padding-left:20px"><span class="avatar">${esc(cats.icon(s))}</span><span class="main"><span class="title">${esc(s.name)} ${s.archived ? '<span class="chip">archived</span>' : ''}${s.pendingReview ? '<span class="chip">new</span>' : ''}</span><span class="sub">${cats.usageCount(s.id)} entries</span></span>
           <span class="row" style="flex-wrap:nowrap"><button class="icon-btn" data-up="${esc(s.id)}" aria-label="Move up">↑</button><button class="icon-btn" data-down="${esc(s.id)}" aria-label="Move down">↓</button><button class="icon-btn" data-act="${esc(s.id)}" aria-label="Actions">⋯</button></span></div>`).join('')}
       </div>`).join('') : empty('No categories.')}`;
 
@@ -105,14 +105,15 @@ function editCategory(c) {
   return new Promise((resolve) => {
     const s = sheet('Edit category', `<form class="stack">
       <label class="field"><span>Name</span><input name="name" value="${esc(c.name)}" required maxlength="40"></label>
-      ${c.parentId ? '' : `<label class="field"><span>Icon (an emoji)</span><input name="icon" value="${esc(c.icon)}" maxlength="4"></label>
-      <label class="field"><span>Colour</span><input name="color" type="color" value="${esc(c.color)}"></label>`}
+      <label class="field"><span>Icon (an emoji${c.parentId ? '; leave blank to use the main category’s' : ''})</span><input name="icon" value="${esc(c.icon)}" maxlength="4"></label>
+      ${c.parentId ? '' : `<label class="field"><span>Colour</span><input name="color" type="color" value="${esc(c.color)}"></label>`}
       <div class="row end"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary">Save</button></div></form>`, { onClose: resolve });
     const f = $('form', s.el);
     f.onsubmit = async (e) => {
       e.preventDefault();
       const patch = { name: f.name.value.trim(), pendingReview: c.pendingReview && cfg.mode !== 'hub' };
-      if (!c.parentId) { patch.icon = f.icon.value.trim(); patch.color = f.color.value; }
+      patch.icon = f.icon.value.trim();
+      if (!c.parentId) patch.color = f.color.value;
       await cats.rename(c.id, patch);
       s.close();
     };
