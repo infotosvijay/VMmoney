@@ -9,6 +9,7 @@ import * as reports from '../reports.js';
 import * as budgets from '../budgets.js';
 import * as sync from '../sync.js';
 import * as live from '../livesync.js';
+import { qrSvg, scanQR } from './qr.js';
 import { onSwipe, installBanner, syncReminder, $, money, toast, confirmDialog, promptDialog, pickFiles, shareOrDownload, empty, progress, relTime, daysSince, sheet } from './components.js';
 import { txRow, entryScreen, transactionsScreen, reportsScreen } from './shared-screens.js';
 import { positionScreen, positionCard } from './position-screens.js';
@@ -19,7 +20,7 @@ import { categoriesScreen, budgetsScreen, accountsScreen, recurringScreen, setti
 
 export const planSummary = (plans) => plans
   .filter((p) => p.add.length || p.update.length || p.deleted)
-  .map((p) => `${p.store}: ${p.add.length} new, ${p.update.length} updated${p.deleted ? `, ${p.deleted} deleted` : ''}`)
+  .map((p) => `${p.label || p.store}: ${p.add.length} new, ${p.update.length} updated${p.deleted ? `, ${p.deleted} deleted` : ''}`)
   .join(' · ') || 'nothing new';
 
 // ---------------------------------------------------------------- home
@@ -140,15 +141,23 @@ async function familyScreen(root) {
 async function syncScreen(root, ctx) {
   const log = db.all('syncLog').sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 10);
   const stale = daysSince(cfg.lastExportAt) >= 7;
+  const other = otherMember(cfg.memberId);
+  const pending = sync.relayPending();
   root.innerHTML = `
     <div class="card"><h2>Status</h2>
       <p>Last sent to Hub: <b>${esc(relTime(cfg.lastExportAt))}</b> ${stale ? '<span class="badge">overdue</span>' : ''}</p>
       <p>Last family update received: <b>${esc(relTime(cfg.lastImportAt))}</b></p>
+      <p>Last synced with ${esc(other.name)}'s phone: <b>${esc(relTime(cfg.peerSyncAt?.[other.id]))}</b></p>
+      ${pending ? `<p class="muted small">${pending} change${pending === 1 ? '' : 's'} from ${esc(other.name)}'s phone will go to the laptop with your next sync.</p>` : ''}
     </div>
     <div class="card stack"><h2>Live sync (same wifi)</h2>
-      <p class="muted small">On the laptop open <b>Live sync</b> and tap Start, then type the 6-digit code here. Sends your changes and brings back the family update in one go.</p>
-      <div class="row"><input id="code" inputmode="numeric" pattern="[0-9]*" maxlength="7" placeholder="6-digit code" autocomplete="off" aria-label="Pairing code" style="max-width:11rem"><button class="btn primary" data-live>Sync now</button></div>
-      <p id="live-msg" class="small muted" role="status"></p>
+      <p class="muted small">Sync with the laptop or with ${esc(other.name)}'s phone. One device shows a QR code, the other scans it.
+        With the laptop: open <b>Live sync</b> there and scan its code. With ${esc(other.name)}: one of you taps <b>Show my QR</b>, the other taps <b>Scan QR</b>.</p>
+      <div class="row"><button class="btn primary" data-scan>📷 Scan QR</button><button class="btn" data-host>Show my QR</button></div>
+      <details class="more-filters"><summary>No camera? Type the 6-digit code</summary>
+        <div class="row" style="margin-top:8px"><input id="code" inputmode="numeric" pattern="[0-9]*" maxlength="7" placeholder="6-digit code" autocomplete="off" aria-label="Pairing code" style="max-width:11rem"><button class="btn" data-live>Sync now</button></div>
+      </details>
+      <p id="live-msg" class="small muted" role="status" aria-live="polite"></p>
     </div>
     <div class="card stack"><h2>Send my data to the Hub (file)</h2>
       <p class="muted small">Creates a file with your new and changed entries. Send it to the laptop through WhatsApp, Nearby Share, email or USB. Sending the same file twice is harmless.</p>
@@ -164,21 +173,75 @@ async function syncScreen(root, ctx) {
   root.onclick = async (e) => {
     const b = e.target.closest('button');
     if (!b) return;
-    if ('live' in b.dataset) return liveSync(b);
+    if ('live' in b.dataset) return liveSync(b, live.parsePairing($('#code', root).value));
+    if ('scan' in b.dataset) return scanAndSync(b);
+    if ('host' in b.dataset) return hostPhone();
     try {
       if (b.dataset.send) await sendData(b.dataset.send === 'full', $('#pw', root).value.trim());
       else if ('import' in b.dataset) await importFile();
     } catch (err) { if (err.name !== 'AbortError') toast(err.message, { timeout: 6000 }); }
   };
 
-  async function liveSync(btn) {
+  const syncedToast = (r) => toast(r.peer === 'member'
+    ? `Synced with ${r.name}'s phone: ${r.sent} sent, ${r.got} received`
+    : `Synced: ${r.sent} sent${r.restored ? `, ${r.restored} entries brought back from the laptop` : ''}, family update received`);
+
+  async function liveSync(btn, pairing) {
     const msg = $('#live-msg', root);
-    btn.disabled = true;
+    if (!pairing) { msg.textContent = 'The code is 6 digits.'; msg.className = 'small danger-text'; return; }
+    msg.className = 'small muted';
+    root.querySelectorAll('[data-live],[data-scan],[data-host]').forEach((x) => { x.disabled = true; });
     try {
-      const r = await live.syncWithHub($('#code', root).value.replace(/\D/g, ''), (t) => { msg.textContent = t; });
-      toast(`Synced: ${r.sent} sent${r.restored ? `, ${r.restored} entries brought back from the laptop` : ''}, family update received`);
+      syncedToast(await live.join(pairing, (t) => { msg.textContent = t; }));
       ctx.refresh();
-    } catch (err) { msg.textContent = err.message; msg.className = 'small danger-text'; btn.disabled = false; }
+    } catch (err) {
+      msg.textContent = err.message; msg.className = 'small danger-text';
+      root.querySelectorAll('[data-live],[data-scan],[data-host]').forEach((x) => { x.disabled = false; });
+    }
+  }
+
+  async function scanAndSync(btn) {
+    let text;
+    try {
+      text = await scanQR({ title: 'Scan to sync', hint: `Point at the QR code on the laptop or on ${other.name}'s phone.`, accept: (t) => !!live.parsePairing(t) });
+    } catch (err) { toast(err.message, { timeout: 6000 }); return; }
+    if (text) liveSync(btn, live.parsePairing(text));
+  }
+
+  /** This phone hosts: show a QR for the other phone to scan. */
+  async function hostPhone() {
+    let session = null;
+    let ended = false;
+    let synced = false;
+    const s = sheet('Sync with a phone', `<div class="stack center">
+        <p class="muted small">On ${esc(other.name)}'s phone open <b>Sync</b>, tap <b>Scan QR</b> and point it here.</p>
+        <div id="host-qr" class="qr" hidden></div>
+        <div class="muted small" id="host-codebox" hidden>or type the code <b id="host-code" class="num" style="letter-spacing:.15em"></b></div>
+        <p id="host-status" role="status" aria-live="polite">Starting…</p>
+        <div class="row end"><button type="button" class="btn" data-close>Close</button></div></div>`, {
+      onClose: () => { ended = true; session?.stop(); if (synced) ctx.refresh(); },
+    });
+    const el = (id) => s.el.querySelector(`#${id}`);
+    try {
+      session = await live.hostSession({
+        code: async (code, text) => {
+          el('host-code').textContent = code.replace(/(\d{3})(\d{3})/, '$1 $2');
+          el('host-qr').innerHTML = await qrSvg(text);
+          el('host-qr').hidden = false;
+          el('host-codebox').hidden = false;
+        },
+        status: (t, kind) => {
+          el('host-status').textContent = t;
+          el('host-status').className = kind === 'error' ? 'danger-text' : kind === 'done' ? 'income' : '';
+          const showQr = kind === 'wait' && !!el('host-qr').innerHTML;
+          el('host-qr').hidden = !showQr;
+          el('host-codebox').hidden = !showQr;
+        },
+        confirm: (name) => confirmDialog(`${name} wants to sync with your phone. Allow?`, { okText: 'Allow', title: 'Sync request' }),
+        done: (r) => { synced = true; syncedToast(r); setTimeout(() => s.close(), 1200); },
+      });
+      if (ended) session.stop();
+    } catch (err) { el('host-status').textContent = err.message; el('host-status').className = 'danger-text'; }
   }
 
   async function sendData(full, pw) {
@@ -228,7 +291,7 @@ export const memberRoutes = {
   category: { title: categoryTitle, render: categoryDetailScreen, back: categoryBack, navId: 'reports' },
   budgets: { title: 'Budgets', render: (r, c) => budgetsScreen(r, c, { hub: false }) },
   family: { title: 'Family view', render: familyScreen },
-  sync: { title: 'Sync with Hub', render: syncScreen },
+  sync: { title: 'Sync', render: syncScreen },
   categories: { title: 'Categories', render: (r, c) => categoriesScreen(r, c, { hub: false }) },
   settings: { title: 'Settings', render: settingsScreen },
   accounts: { title: 'Accounts', render: accountsScreen, back: 'settings', navId: 'settings' },
@@ -243,7 +306,7 @@ export const memberNav = [
   { id: 'reports', ico: '📊', label: 'Reports' },
   { id: 'budgets', ico: '🎯', label: 'Budgets' },
   { id: 'family', ico: '👪', label: 'Family view' },
-  { id: 'sync', ico: '🔄', label: 'Sync with Hub' },
+  { id: 'sync', ico: '🔄', label: 'Sync' },
   { id: 'categories', ico: '🗂️', label: 'Categories' },
   { id: 'settings', ico: '⚙️', label: 'Settings' },
 ];

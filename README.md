@@ -5,7 +5,8 @@ Plain HTML, CSS and JavaScript: no build step, no server, no monthly cost. Your 
 
 - **Phones** (VJ and MM) record entries and balances, fully offline.
 - **Laptop (Family Hub)** merges both phones' data, builds family reports and keeps the master backup `family.json`.
-- Phones and laptop sync by **live sync** (6-digit code) or by **sending files**.
+- Phones and laptop sync by **live sync** (scan a QR code) or by **sending files**. The two phones can also sync
+  with each other directly, and then either phone can bring the laptop up to date for both.
 
 ---
 
@@ -95,9 +96,24 @@ or in **More → Categories**.
 ## 4. Syncing phones and laptop
 
 ### Live sync (same wifi)
-1. Laptop: open **Live sync** and tap **Start waiting for a phone**. A 6-digit code appears.
-2. Phone: **More → Sync → Live sync**, enter the code, tap **Sync now**.
-3. Laptop: tap **Allow**. The phone sends its changes and receives the family update.
+One device shows a QR code, the other scans it. Scanning connects straight away; typing the 6-digit code shown under
+the QR also works, but then the device showing the code must tap **Allow**.
+
+**Phone ↔ laptop**
+1. Laptop: open **Live sync** and tap **Start waiting for a phone**. A QR code and a 6-digit code appear.
+2. Phone: **More → Sync → Scan QR** and point the camera at the laptop screen.
+3. The phone sends its changes and receives the family update.
+
+**Phone ↔ phone (no laptop needed)**
+1. One phone: **More → Sync → Show my QR**.
+2. The other phone: **More → Sync → Scan QR**.
+3. Each phone gets the other's new and changed entries, balances and categories (only what it is missing).
+
+**One phone is enough for the laptop.** What a phone received from the other phone goes to the laptop with its next
+sync (Sync shows "N changes from … will go to the laptop"). So VJ and MM can sync their phones together, and later
+just one of them syncs with the laptop.
+
+The camera needs permission the first time (the app asks). iPhone and Android both work.
 
 Needs the wifi to have internet (only a small handshake goes through the free PeerJS service; the data travels
 device to device). If the router blocks devices from reaching each other (guest wifi, client isolation), use files.
@@ -111,7 +127,8 @@ device to device). If the router blocks devices from reaching each other (guest 
 ### Seeing each other's spending and balances
 Every sync also brings back the **other person's entries** (read-only) and the shared **Balances** (banks, cash, cards).
 On a phone, Entries and Reports then show **Mine / <other person> / Family**, and Summary shows *Family spending*.
-Data is only as fresh as the last sync: VJ sees MM's latest after MM has synced with the laptop, then VJ syncs.
+Data is only as fresh as the last sync: VJ sees MM's latest straight away with a phone-to-phone sync, or after MM has
+synced with the laptop and then VJ syncs.
 When creating a family package by file, keep "Include everyone's entries" ticked.
 
 **Edits and deletions** of existing entries sync the same way: the person syncs with the laptop, then the other person
@@ -156,7 +173,9 @@ Both methods use the same merge rules, so mix them freely. Importing the same fi
 | Page 404 after enabling Pages | Wait a couple of minutes. Check `index.html` is at the repo root, branch `main`, folder `/ (root)`. |
 | App looks blank or old after an update | Open it online, tap **Refresh** on the update prompt, or *Settings → Check for updates*. |
 | Can't install on iPhone | Use **Safari**, then Share → Add to Home Screen. |
-| Live sync says "No laptop is waiting" | Check the 6-digit code and that the laptop shows *Waiting*. Codes expire after 10 minutes. |
+| Live sync says "Nobody is waiting" | Check the code and that the other device still shows *Waiting*. Codes expire after 10 minutes. |
+| Scan QR says the camera was refused | Allow the camera for the app in the phone's settings (iPhone: Settings → Safari → Camera), or type the 6-digit code. |
+| "Different app version" | Update both devices (Settings → Check for updates), then sync again. |
 | Live sync says "Could not connect directly" | The wifi blocks device-to-device traffic. Use file sync. |
 | Hub can't auto-save `family.json` | Use Chrome or Edge on the laptop, and click **Allow** if the master-file banner asks for permission. |
 | Everything is empty | The address changed or browser data was cleared. Restore from a backup file. |
@@ -176,4 +195,5 @@ Service workers need `https` or `localhost`:
 - `js/sync.js` file packages and merge rules, `js/livesync.js` live sync, `js/hubfile.js` family.json auto-save,
   `js/csvimport.js`, `js/lock.js`
 - `js/ui/*` screens: member, hub, shared, settings, position (Balances), components
-- `js/vendor/` Chart.js and PeerJS (bundled so everything works offline)
+- `js/ui/qr.js` QR pairing: draws the code and scans it with the camera
+- `js/vendor/` Chart.js, PeerJS, qrcode-generator and jsQR (bundled so everything works offline)

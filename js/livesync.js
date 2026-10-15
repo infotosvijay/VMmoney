@@ -1,13 +1,19 @@
-// Live sync: phone <-> laptop hub over a direct WebRTC connection (PeerJS), paired with a 6-digit code.
+// Live sync over a direct WebRTC connection (PeerJS), paired by QR code or a 6-digit code.
+//  - phone <-> laptop hub: the phone sends its changes (and the other phone's, if it has newer ones), gets the family update.
+//  - phone <-> phone: the two phones swap only what the other is missing, no laptop needed.
+// One device hosts (shows the QR / code), the other joins. The QR also carries a one-time key, so a scanned
+// pairing needs no "Allow" tap; a typed code still asks the host to allow it.
 //
 // Only the tiny connection handshake goes through PeerJS's public broker; the data itself travels
 // device-to-device (encrypted by WebRTC) and never touches a server. Needs the router to be online.
-// Same package format and merge rules as file sync, so the two methods can be mixed freely.
+// Same package format and merge rules as file sync, so the methods can be mixed freely.
 
 import { cfg } from './db.js';
 import * as sync from './sync.js';
 
 const PREFIX = 'fmm-vm-';
+const QR_TAG = 'VMM1';
+const PROTO = 2; // 2: QR key, roles, phone <-> phone
 const HOST_TTL_MS = 10 * 60 * 1000;
 const STEP_TIMEOUT_MS = 90 * 1000;
 
@@ -25,27 +31,48 @@ function loadPeerLib() {
 }
 
 const newCode = () => String(Math.floor(100000 + Math.random() * 900000));
+const newKey = () => [...crypto.getRandomValues(new Uint8Array(9))].map((b) => b.toString(36).padStart(2, '0')).join('');
+
+/** Pairing text in the QR code. */
+const qrText = (code, key) => `${QR_TAG}:${code}:${key}`;
+
+/** Reads a scanned QR or a typed code. Returns { code, key } or null. */
+export function parsePairing(text) {
+  const t = String(text || '').trim();
+  const m = t.match(new RegExp(`^${QR_TAG}:(\\d{6}):([a-z0-9]+)$`, 'i'));
+  if (m) return { code: m[1], key: m[2] };
+  const digits = t.replace(/\D/g, '');
+  return /^\d{6}$/.test(digits) && !/[a-z]/i.test(t) ? { code: digits, key: '' } : null;
+}
 
 function friendly(err) {
   const t = err?.type || '';
-  if (t === 'peer-unavailable') return 'No laptop is waiting with that code. Check the code and that the laptop shows "Waiting".';
+  if (t === 'peer-unavailable') return 'Nobody is waiting with that code. Check the code and that the other device shows "Waiting".';
   if (t === 'network' || t === 'server-error' || t === 'socket-error' || t === 'socket-closed') return 'Could not reach the connection service. Check that the wifi has internet, or use file sync.';
   if (t === 'webrtc') return 'Could not connect directly. Some wifi networks block devices from reaching each other; use file sync instead.';
   return err?.message || 'Live sync failed';
 }
 
-// ---------------------------------------------------------------- hub (laptop): wait for a phone
+const DENY_TEXT = {
+  update: 'The other device has a different app version. Update both devices, then try again.',
+  same: 'Both phones belong to the same person. Phone sync is between VJ\'s and MM\'s phones.',
+  user: 'The other device declined the request.',
+};
+
+// ---------------------------------------------------------------- host: laptop or phone waits for a phone
 
 /**
- * Starts waiting for one phone. `ui` callbacks: status(text, kind), confirm(name) -> Promise<bool>.
- * Returns { stop() }.
+ * Starts waiting for one phone. `ui` callbacks: code(code, qrText), status(text, kind),
+ * confirm(name) -> Promise<bool>, done(result). Returns { stop() }.
  */
 export async function hostSession(ui) {
   await loadPeerLib();
+  const isHub = cfg.mode === 'hub';
   let peer;
   let stopped = false;
   let busy = false;
   let timer;
+  let key = '';
 
   const stop = (text) => {
     if (stopped) return;
@@ -57,16 +84,17 @@ export async function hostSession(ui) {
 
   async function open(attempt = 0) {
     const code = newCode();
+    key = newKey();
     peer = new window.Peer(PREFIX + code, { debug: 0 });
     peer.on('open', () => {
-      ui.code(code);
-      ui.status('Waiting for a phone…', 'wait');
+      ui.code(code, qrText(code, key));
+      ui.status(isHub ? 'Waiting for a phone…' : 'Waiting for the other phone…', 'wait');
       timer = setTimeout(() => stop('Timed out after 10 minutes. Start again when ready.'), HOST_TTL_MS);
     });
     peer.on('error', (err) => {
       if (stopped) return;
       if (err.type === 'unavailable-id' && attempt < 5) { try { peer.destroy(); } catch { /* ignore */ } return open(attempt + 1); }
-      stop(friendly(err));
+      stop();
       ui.status(friendly(err), 'error');
     });
     peer.on('connection', (conn) => {
@@ -76,18 +104,34 @@ export async function hostSession(ui) {
     });
   }
 
+  const deny = (conn, reason) => { conn.send({ t: 'denied', reason }); setTimeout(() => conn.close(), 300); };
+
   async function handle(conn) {
     const inbox = makeInbox(conn);
     const hello = await inbox.next('hello', STEP_TIMEOUT_MS);
-    ui.status(`${hello.name || 'A phone'} is asking to sync…`, 'work');
-    if (!(await ui.confirm(hello.name || 'A phone'))) {
-      conn.send({ t: 'denied' });
-      ui.status('You declined that request. Still waiting…', 'wait');
-      setTimeout(() => conn.close(), 300);
-      return;
+    const name = hello.name || 'A phone';
+    if (!isHub && (hello.proto || 0) < PROTO) return deny(conn, 'update');
+    if (!isHub && hello.memberId === cfg.memberId) return deny(conn, 'same');
+    // a scanned QR carries the key; a typed code needs a tap on "Allow"
+    if (!(key && hello.key === key)) {
+      ui.status(`${name} is asking to sync…`, 'work');
+      if (!(await ui.confirm(name))) {
+        deny(conn, 'user');
+        ui.status('You declined that request. Still waiting…', 'wait');
+        return;
+      }
     }
-    conn.send({ t: 'ready' });
-    ui.status('Receiving data…', 'work');
+    if (isHub) return hubHandle(conn, inbox, name);
+    conn.send({ t: 'ready', role: 'member', memberId: cfg.memberId, name: cfg.memberName, proto: PROTO });
+    const r = await peerExchange(conn, inbox, { memberId: hello.memberId, name }, (t) => ui.status(t, 'work'));
+    ui.status(`Synced with ${name}'s phone: ${r.sent} sent, ${r.got} received.`, 'done');
+    ui.done?.({ ...r, peer: 'member' });
+    stop();
+  }
+
+  async function hubHandle(conn, inbox, name) {
+    conn.send({ t: 'ready', role: 'hub', proto: PROTO });
+    ui.status(`Receiving data from ${name}…`, 'work');
 
     let msg = await inbox.next('member', STEP_TIMEOUT_MS);
     let pkg = await sync.validatePackage(msg.pkg, 'Phone data');
@@ -103,13 +147,15 @@ export async function hostSession(ui) {
     }
     pkg.fileName = 'live sync';
     const applied = await sync.applyMemberPackage(preview);
+    // don't echo back what the phone has only just sent us
+    const sentKeys = (k) => new Set([...(pkg.records[k] || []), ...(pkg.records.relay?.[k] || [])].map((r) => `${r.id}|${r.updatedAt}`));
     const fam = await sync.buildFamilyPackage({ includeSummary: true, ownFor: pkg.fromMemberId, since: pkg.full ? null : pkg.since, entries: true, entriesExcept: pkg.fromMemberId,
-      justReceived: Object.fromEntries(['transactions', 'accounts', 'recurring'].map((k) => [k, new Set((pkg.records[k] || []).map((r) => `${r.id}|${r.updatedAt}`))])),
+      justReceived: Object.fromEntries(['transactions', 'accounts', 'recurring'].map((k) => [k, sentKeys(k)])),
     });
     conn.send({ t: 'family', pkg: fam.pkg, applied });
     await inbox.next('done', STEP_TIMEOUT_MS).catch(() => {});
     ui.status(`Synced with ${preview.name}: ${applied} records received, family update sent.`, 'done');
-    ui.done?.(preview.name, applied);
+    ui.done?.({ peer: 'hub', name: preview.name, got: applied });
     stop();
   }
 
@@ -117,11 +163,14 @@ export async function hostSession(ui) {
   return { stop: () => stop('Stopped.') };
 }
 
-// ---------------------------------------------------------------- phone: connect to the laptop
+// ---------------------------------------------------------------- phone: join a laptop or the other phone
 
-/** Connect with the laptop's code, send my changes, apply the family update. Resolves with a summary. */
-export async function syncWithHub(code, onStatus = () => {}) {
-  if (!/^\d{6}$/.test(code)) throw new Error('The code is 6 digits.');
+/**
+ * Joins whoever hosts `pairing` ({ code, key } from parsePairing). Resolves with
+ * { peer: 'hub', sent, restored } or { peer: 'member', name, sent, got }.
+ */
+export async function join(pairing, onStatus = () => {}) {
+  if (!pairing || !/^\d{6}$/.test(pairing.code)) throw new Error('The code is 6 digits.');
   await loadPeerLib();
   return new Promise((resolve, reject) => {
     let peer;
@@ -134,47 +183,79 @@ export async function syncWithHub(code, onStatus = () => {}) {
       try { peer?.destroy(); } catch { /* ignore */ }
       err ? reject(err instanceof Error ? err : new Error(friendly(err))) : resolve(val);
     };
-    const overall = setTimeout(() => finish(new Error('Timed out. Is the laptop still showing "Waiting"?')), 3 * 60 * 1000);
+    const overall = setTimeout(() => finish(new Error('Timed out. Is the other device still showing "Waiting"?')), 3 * 60 * 1000);
 
     onStatus('Connecting…');
     peer = new window.Peer({ debug: 0 });
     peer.on('error', (e) => finish(new Error(friendly(e))));
     peer.on('open', () => {
-      const conn = peer.connect(PREFIX + code, { reliable: true });
+      const conn = peer.connect(PREFIX + pairing.code, { reliable: true });
       conn.on('error', (e) => finish(new Error(friendly(e))));
-      conn.on('close', () => { if (!succeeded) finish(new Error('The laptop closed the connection.')); });
+      conn.on('close', () => { if (!succeeded) finish(new Error('The other device closed the connection.')); });
       conn.on('open', async () => {
         try {
           const inbox = makeInbox(conn);
-          onStatus('Waiting for the laptop to accept…');
-          conn.send({ t: 'hello', memberId: cfg.memberId, name: cfg.memberName });
+          onStatus(pairing.key ? 'Connected…' : 'Waiting for the other device to allow…');
+          conn.send({ t: 'hello', memberId: cfg.memberId, name: cfg.memberName, key: pairing.key || '', proto: PROTO });
           const reply = await inbox.next(['ready', 'denied'], STEP_TIMEOUT_MS);
-          if (reply.t === 'denied') throw new Error('The laptop declined the request.');
-          onStatus('Sending my changes…');
-          let built = await sync.buildMemberPackage({ full: false });
-          conn.send({ t: 'member', pkg: built.pkg });
-          // the hub either answers with the family update, or first asks for a full copy
-          const answer = await inbox.next(['family', 'need-full'], STEP_TIMEOUT_MS);
-          let famMsg = answer;
-          if (answer.t === 'need-full') {
-            onStatus('Sending a full copy…');
-            built = await sync.buildMemberPackage({ full: true });
-            conn.send({ t: 'member', pkg: built.pkg });
-            famMsg = await inbox.next('family', STEP_TIMEOUT_MS);
+          if (reply.t === 'denied') throw new Error(DENY_TEXT[reply.reason] || DENY_TEXT.user);
+          let result;
+          if (reply.role === 'member') {
+            if (reply.memberId === cfg.memberId) throw new Error(DENY_TEXT.same);
+            const r = await peerExchange(conn, inbox, { memberId: reply.memberId, name: reply.name || 'Phone' }, onStatus, () => { succeeded = true; });
+            result = { peer: 'member', ...r };
+          } else {
+            result = await hubExchange(conn, inbox, onStatus);
+            succeeded = true;
           }
-          onStatus('Applying the family update…');
-          const fam = await sync.validatePackage(famMsg.pkg, 'Family update');
-          fam.fileName = 'live sync';
-          await sync.applyFamilyPackage(sync.previewFamilyPackage(fam));
-          await sync.commitExport({ fileName: 'live sync', count: built.count, createdAt: built.pkg.createdAt });
-          succeeded = true;
-          conn.send({ t: 'done' });
-          const restored = (fam.records.own?.transactions || []).filter((t) => !t.deleted).length;
-          setTimeout(() => finish(null, { sent: built.count, restored }), 300);
+          setTimeout(() => finish(null, result), 300);
         } catch (e) { finish(e); }
       });
     });
   });
+}
+
+/** Phone side of a laptop sync: send my changes, apply the family update. */
+async function hubExchange(conn, inbox, onStatus) {
+  onStatus('Sending my changes…');
+  let built = await sync.buildMemberPackage({ full: false });
+  conn.send({ t: 'member', pkg: built.pkg });
+  // the hub either answers with the family update, or first asks for a full copy
+  const answer = await inbox.next(['family', 'need-full'], STEP_TIMEOUT_MS);
+  let famMsg = answer;
+  if (answer.t === 'need-full') {
+    onStatus('Sending a full copy…');
+    built = await sync.buildMemberPackage({ full: true });
+    conn.send({ t: 'member', pkg: built.pkg });
+    famMsg = await inbox.next('family', STEP_TIMEOUT_MS);
+  }
+  onStatus('Applying the family update…');
+  const fam = await sync.validatePackage(famMsg.pkg, 'Family update');
+  fam.fileName = 'live sync';
+  await sync.applyFamilyPackage(sync.previewFamilyPackage(fam));
+  await sync.commitExport({ fileName: 'live sync', count: built.count, createdAt: built.pkg.createdAt });
+  conn.send({ t: 'done' });
+  const restored = (fam.records.own?.transactions || []).filter((t) => !t.deleted).length;
+  return { peer: 'hub', sent: built.count, restored };
+}
+
+/** Both phones run this: swap version lists, send what the other lacks, apply what arrives. */
+async function peerExchange(conn, inbox, other, onStatus, onApplied = () => {}) {
+  onStatus(`Comparing with ${other.name}'s phone…`);
+  conn.send({ t: 'have', have: sync.peerManifest() });
+  const theirs = await inbox.next('have', STEP_TIMEOUT_MS);
+  const out = await sync.buildPeerPackage(other.memberId, theirs.have);
+  onStatus('Swapping changes…');
+  conn.send({ t: 'peer', pkg: out.pkg });
+  const msg = await inbox.next('peer', STEP_TIMEOUT_MS);
+  const pkg = await sync.validatePackage(msg.pkg, 'Phone data');
+  if (pkg.packageType !== 'peer' || pkg.fromMemberId !== other.memberId) throw new Error('Unexpected data from the other phone');
+  pkg.fileName = `phone sync with ${other.name}`;
+  const got = await sync.applyPeerPackage(sync.previewPeerPackage(pkg));
+  onApplied();
+  conn.send({ t: 'done' });
+  await inbox.next('done', STEP_TIMEOUT_MS).catch(() => {});
+  return { name: other.name, sent: out.count, got };
 }
 
 // ---------------------------------------------------------------- helpers

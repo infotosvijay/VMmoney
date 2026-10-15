@@ -6,15 +6,19 @@
 //  5. A member package may only change that member's own records (categories excepted).
 //  6. Checksum + schemaVersion verified before anything is merged.
 //  7. Importing the same file twice changes nothing.
+//  8. Phone <-> phone: each phone sends the other its own records plus the shared stores. What a phone receives
+//     that way is passed on to the hub with its next send, so either phone can bring the laptop up to date.
 
 import * as db from './db.js';
 import { cfg } from './db.js';
-import { SCHEMA_VERSION, PACKAGE_APP, nowISO, sha256Hex, stamp, uid } from './models.js';
+import { SCHEMA_VERSION, PACKAGE_APP, nowISO, sha256Hex, stamp, uid, familyMember } from './models.js';
 import * as cats from './categories.js';
 import * as reports from './reports.js';
 
 const OWNED = ['transactions', 'accounts', 'recurring'];
 const MASTER_STORES = ['members', 'accounts', 'categories', 'transactions', 'budgets', 'recurring', 'holdings'];
+const RELAY_OWNED = ['transactions', 'accounts'];
+const RELAY_SHARED = ['categories', 'holdings'];
 
 // ---------- envelope, checksum, optional encryption ----------
 
@@ -120,22 +124,33 @@ export async function buildMemberPackage({ full = false, forMemberId = cfg.membe
   const changed = (r) => !since || r.updatedAt > since;
   const mineRecs = (s) => db.all(s).filter((r) => r.ownerId === forMemberId && changed(r));
   const who = db.get('members', forMemberId) || { id: forMemberId, name: cfg.memberName, color: cfg.memberColor };
+  // records received from the other phone, waiting to be passed on to the hub
+  const relayed = (s) => (self ? cfg.relayIds?.[s] || [] : []).map((id) => db.get(s, id)).filter(Boolean);
+  const withRelay = (s) => {
+    const recs = db.all(s).filter(changed);
+    const ids = new Set(recs.map((r) => r.id));
+    return recs.concat(relayed(s).filter((r) => !ids.has(r.id)));
+  };
   const records = {
     transactions: mineRecs('transactions'),
     accounts: mineRecs('accounts'),
     recurring: mineRecs('recurring'),
-    categories: db.all('categories').filter(changed),
-    holdings: db.all('holdings').filter(changed),
+    categories: withRelay('categories'),
+    holdings: withRelay('holdings'),
     member: who,
   };
+  const relay = Object.fromEntries(RELAY_OWNED.map((s) => [s, relayed(s).filter((r) => r.ownerId !== forMemberId)]));
+  if (RELAY_OWNED.some((s) => relay[s].length)) records.relay = relay;
   const pkg = await envelope('member', records, { since, full: full || !self, fromMemberId: forMemberId, fromMemberName: who.name });
-  const count = records.transactions.length + records.accounts.length + records.recurring.length + records.categories.length + records.holdings.length;
+  const count = records.transactions.length + records.accounts.length + records.recurring.length + records.categories.length + records.holdings.length
+    + relay.transactions.length + relay.accounts.length;
   const safeName = (who.name || 'member').toLowerCase().replace(/[^a-z0-9]+/g, '-');
   return { pkg, count, fileName: `mm-member-${safeName}-${stamp()}.json` };
 }
 
 export async function commitExport({ fileName, count, createdAt }) {
   await db.setCfg('lastExportAt', createdAt);
+  if (cfg.relayIds) await db.delCfg('relayIds');
   await db.put('syncLog', { id: uid(), direction: 'export', memberId: cfg.memberId, fileName, recordCount: count, at: nowISO() }, { silent: true });
 }
 
@@ -145,6 +160,11 @@ export function previewMemberPackage(pkg) {
   if (pkg.packageType !== 'member') throw new Error(`${pkg.fileName || 'File'}: expected a member package`);
   const acc = memberAccept(pkg);
   const plans = ['categories', 'accounts', 'transactions', 'recurring', 'holdings'].map((s) => planMerge(s, pkg.records[s], acc[s]));
+  // the other member's records this phone got from their phone (newer version wins as usual)
+  const relayOk = (r) => r.ownerId !== pkg.fromMemberId && !!familyMember(r.ownerId);
+  for (const s of RELAY_OWNED) {
+    if (pkg.records.relay?.[s]?.length) plans.push({ ...planMerge(s, pkg.records.relay[s], relayOk), relay: true, label: `${s} (passed on)` });
+  }
   const lastSeen = lastSyncAt(pkg.fromMemberId);
   const known = !!db.get('members', pkg.fromMemberId);
   // Incremental file whose "since" is later than what the hub last received => changes may be missing.
@@ -154,11 +174,12 @@ export function previewMemberPackage(pkg) {
 
 export async function applyMemberPackage(preview) {
   const { pkg, plans } = preview;
-  const byStore = Object.fromEntries(plans.map((p) => [p.store, p]));
+  const byStore = Object.fromEntries(plans.filter((p) => !p.relay).map((p) => [p.store, p]));
   // Categories first so entries always find them. New member-made categories wait for review.
   byStore.categories.add.forEach((c) => { if (!c.isDefault && cfg.mode === 'hub') c.pendingReview = c.pendingReview !== false; });
   await writePlan(byStore.categories);
   for (const s of ['accounts', 'transactions', 'recurring', 'holdings']) await writePlan(byStore[s]);
+  for (const p of plans.filter((x) => x.relay)) await writePlan(p);
   const m = pkg.records.member;
   if (m?.id === pkg.fromMemberId) {
     const cur = db.get('members', m.id);
@@ -233,6 +254,68 @@ export async function applyFamilyPackage(preview) {
   await db.setCfg('lastImportAt', nowISO());
   await db.put('syncLog', { id: uid(), direction: 'import', memberId: pkg.fromMemberId, fileName: pkg.fileName || '', recordCount: plans.reduce((n, p) => n + p.add.length + p.update.length, 0), at: nowISO() }, { silent: true });
 }
+
+// ---------- phone <-> phone ----------
+// Each phone first sends a list of what it has (id -> updatedAt); the other answers with only what is missing or
+// older there. Comparing versions instead of "changed since" stays right even when the two phones' clocks differ.
+
+const PEER_OWNED = ['transactions', 'accounts'];
+const PEER_SHARED = ['categories', 'holdings', 'budgets', 'members'];
+
+/** The versions I hold of everything a peer phone may send me. 'x' marks a deleted record (never resurrected). */
+export function peerManifest() {
+  const have = {};
+  for (const s of [...PEER_OWNED, ...PEER_SHARED]) {
+    have[s] = {};
+    for (const r of db.all(s)) {
+      if (PEER_OWNED.includes(s) && r.ownerId === cfg.memberId) continue; // a peer never sends me my own records
+      have[s][r.id] = r.deleted ? 'x' : r.updatedAt || '';
+    }
+  }
+  return have;
+}
+
+/** Everything the peer is missing or holds an older version of. Their own records are theirs to send, never mine. */
+export async function buildPeerPackage(peerId, theirs) {
+  const wanted = (s, r) => { const v = theirs?.[s]?.[r.id]; return v === undefined || (v !== 'x' && (r.updatedAt || '') > v); };
+  const records = {};
+  for (const s of PEER_OWNED) records[s] = db.all(s).filter((r) => r.ownerId !== peerId && wanted(s, r));
+  for (const s of PEER_SHARED) records[s] = db.all(s).filter((r) => wanted(s, r));
+  const pkg = await envelope('peer', records);
+  return { pkg, count: Object.values(records).reduce((n, l) => n + l.length, 0) };
+}
+
+export function previewPeerPackage(pkg) {
+  if (pkg.packageType !== 'peer') throw new Error('Expected data from a phone');
+  const notMine = (r) => r.ownerId !== cfg.memberId;
+  const r = pkg.records;
+  return {
+    pkg, name: pkg.fromMemberName || 'Phone',
+    plans: [...PEER_SHARED.map((s) => planMerge(s, r[s])), ...PEER_OWNED.map((s) => planMerge(s, r[s], notMine))],
+  };
+}
+
+export async function applyPeerPackage(preview) {
+  const { pkg, plans } = preview;
+  const byStore = Object.fromEntries(plans.map((p) => [p.store, p]));
+  for (const s of ['categories', 'members', 'budgets', 'holdings', 'accounts', 'transactions']) await writePlan(byStore[s]);
+  // remember what came in, so the next send to the hub passes it on
+  const relay = { ...(cfg.relayIds || {}) };
+  for (const s of [...RELAY_OWNED, ...RELAY_SHARED]) {
+    const ids = [...byStore[s].add, ...byStore[s].update].map((x) => x.id);
+    if (ids.length) relay[s] = [...new Set([...(relay[s] || []), ...ids])];
+  }
+  await db.setCfg('relayIds', relay);
+  const count = plans.reduce((n, p) => n + p.add.length + p.update.length, 0);
+  if ((pkg.records.transactions || []).length) { await db.setCfg('hasFamilyEntries', true); await db.setCfg('familyEntriesAt', nowISO()); }
+  await db.setCfg('peerSyncAt', { ...(cfg.peerSyncAt || {}), [pkg.fromMemberId]: nowISO() });
+  await cats.remapMerged();
+  await db.put('syncLog', { id: uid(), direction: 'import', memberId: pkg.fromMemberId, fileName: pkg.fileName || '', recordCount: count, at: nowISO() }, { silent: true });
+  return count;
+}
+
+/** How many records from the other phone are waiting to be passed on to the hub. */
+export const relayPending = () => Object.values(cfg.relayIds || {}).reduce((n, l) => n + l.length, 0);
 
 // ---------- master file (hub family.json) ----------
 

@@ -10,6 +10,7 @@ import * as budgets from '../budgets.js';
 import * as sync from '../sync.js';
 import * as hubfile from '../hubfile.js';
 import * as live from '../livesync.js';
+import { qrSvg } from './qr.js';
 import { $, $$, money, toast, confirmDialog, promptDialog, pickFiles, shareOrDownload, empty, progress, relTime, daysSince, drawChart, cssVar, sheet, onSwipe } from './components.js';
 import { entryScreen, transactionsScreen, reportsScreen } from './shared-screens.js';
 import { positionScreen, positionCard } from './position-screens.js';
@@ -100,7 +101,7 @@ async function dashboardScreen(root, ctx) {
 let staged = []; // [{file, preview} | {file, error}]
 
 async function importScreen(root, ctx) {
-  const rows = (pv) => pv.plans.map((p) => `<tr><td>${esc(p.store)}</td><td class="r num">${p.add.length}</td><td class="r num">${p.update.length}</td><td class="r num">${p.same}</td><td class="r num">${p.deleted}</td><td class="r num ${p.rejected ? 'danger-text' : ''}">${p.rejected}</td></tr>`).join('');
+  const rows = (pv) => pv.plans.map((p) => `<tr><td>${esc(p.label || p.store)}</td><td class="r num">${p.add.length}</td><td class="r num">${p.update.length}</td><td class="r num">${p.same}</td><td class="r num">${p.deleted}</td><td class="r num ${p.rejected ? 'danger-text' : ''}">${p.rejected}</td></tr>`).join('');
   root.innerHTML = `
     <div class="drop" id="drop"><p><b>Drop member files here</b></p><p class="small">or</p><button class="btn primary" data-pick>Choose files…</button><p class="small">Files look like <code>mm-member-name-20261012-2030.json</code>. Importing a file twice changes nothing.</p></div>
     ${staged.map((s, i) => s.error ? `<div class="card"><b>${esc(s.file.name)}</b><p class="danger-text">${esc(s.error)}</p><button class="btn small" data-drop="${i}">Remove</button></div>` : `
@@ -248,35 +249,40 @@ async function masterFileScreen(root, ctx) {
 // ---------------------------------------------------------------- live sync
 
 let host = null;
-const liveState = { code: '', text: '', kind: 'idle' };
+const liveState = { code: '', qr: '', text: '', kind: 'idle' };
 
 function paintLive() {
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   set('live-code', liveState.code ? liveState.code.replace(/(\d{3})(\d{3})/, '$1 $2') : '');
   set('live-status', liveState.text);
+  const qrBox = document.getElementById('live-qr');
+  if (qrBox && qrBox.dataset.code !== liveState.code) { qrBox.innerHTML = liveState.qr; qrBox.dataset.code = liveState.code; }
   const stopBtn = document.getElementById('live-stop');
   const startBtn = document.getElementById('live-start');
   const active = !!host;
   if (stopBtn) stopBtn.hidden = !active;
   if (startBtn) startBtn.hidden = active;
-  document.getElementById('live-codebox')?.toggleAttribute('hidden', !(active && liveState.code));
+  document.getElementById('live-codebox')?.toggleAttribute('hidden', !(active && liveState.code && liveState.kind === 'wait'));
 }
 
 async function liveScreen(root, ctx) {
   root.innerHTML = `
     <div class="card stack"><h2>Live sync with a phone</h2>
-      <p class="muted small">VJ's and MM's phones can sync directly with this laptop when you are on the same wifi. No files to send. Both devices need the internet connection to be on (only the handshake uses it; your data goes device to device).</p>
-      <div id="live-codebox" class="center" hidden><div class="muted small">On the phone, open <b>Sync → Live sync</b> and enter</div><div id="live-code" class="amount-input num" style="letter-spacing:.2em"></div></div>
+      <p class="muted small">VJ's and MM's phones can sync directly with this laptop when you are on the same wifi. No files to send. Both devices need the internet connection to be on (only the handshake uses it; your data goes device to device).
+        A phone that has synced with the other phone brings the other phone's changes too, so one phone is enough.</p>
+      <div id="live-codebox" class="center stack" hidden><div class="muted small">On the phone, open <b>More → Sync</b>, tap <b>Scan QR</b> and point it here</div>
+        <div id="live-qr" class="qr"></div>
+        <div class="muted small">or type the code</div><div id="live-code" class="amount-input num" style="letter-spacing:.2em"></div></div>
       <p id="live-status" role="status"></p>
       <div class="row"><button class="btn primary" id="live-start">Start waiting for a phone</button><button class="btn" id="live-stop" hidden>Stop</button></div>
       <p class="muted small">If a phone can't connect (some routers stop devices talking to each other), use <a href="#/import">file import</a> instead. Both ways merge the same data.</p>
     </div>`;
   paintLive();
   $('#live-start', root).onclick = async () => {
-    liveState.text = 'Starting…'; liveState.code = ''; liveState.kind = 'wait';
+    liveState.text = 'Starting…'; liveState.code = ''; liveState.qr = ''; liveState.kind = 'wait';
     try {
       host = await live.hostSession({
-        code: (c) => { liveState.code = c; paintLive(); },
+        code: async (c, text) => { liveState.qr = await qrSvg(text).catch(() => ''); liveState.code = c; paintLive(); },
         status: (t, kind) => { liveState.text = t; liveState.kind = kind; if (kind === 'idle' || kind === 'error') host = null; paintLive(); },
         confirm: (name) => confirmDialog(`${name} wants to sync with this laptop. Allow?`, { okText: 'Allow', title: 'Sync request' }),
         done: () => { host = null; liveState.code = ''; paintLive(); },
