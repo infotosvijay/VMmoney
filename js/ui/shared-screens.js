@@ -110,6 +110,18 @@ export async function entryScreen(root, ctx) {
         note: '', tagsText: '', receiptPhoto: null, repeat: '', xfer: 'own', direction: 'out',
       };
 
+  // earlier notes for the browser's autofill on the Note field, most used first
+  const noteCounts = new Map();
+  for (const t of db.live('transactions')) {
+    const n = (t.note || '').trim();
+    if (!n) continue;
+    const k = n.toLowerCase();
+    const cur = noteCounts.get(k);
+    noteCounts.set(k, { text: cur?.text || n, count: (cur?.count || 0) + 1 });
+  }
+  const noteOptions = [...noteCounts.values()].sort((a, b) => b.count - a.count).slice(0, 500)
+    .map((x) => `<option value="${esc(x.text)}"></option>`).join('');
+
   let focused = false;
   function draw() {
     const isT = st.type === 'transfer';
@@ -163,7 +175,8 @@ export async function entryScreen(root, ctx) {
         </label>
         ${existing || isT ? '' : `<label class="field"><span>Repeat</span>
           <select id="repeat"><option value="">Does not repeat</option>${FREQUENCIES.map(([v, l]) => `<option value="${v}" ${v === st.repeat ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`}
-        <label class="field"><span>Note</span><input id="note" maxlength="200" value="${esc(st.note)}" placeholder="What was it for?"></label>
+        <label class="field"><span>Note</span><input id="note" maxlength="200" value="${esc(st.note)}" placeholder="What was it for?" list="note-list" autocomplete="off"></label>
+        <datalist id="note-list">${noteOptions}</datalist>
         <label class="field"><span>Tags <span class="muted">(space separated)</span></span><input id="tags" value="${esc(st.tagsText)}" placeholder="#trip #diwali"></label>
         <div>
           <span class="muted small">Receipt photo (optional)</span>

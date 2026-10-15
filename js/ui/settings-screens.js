@@ -19,6 +19,11 @@ const fmem = () => familyMember(cfg.memberId);
 let catType = 'expense';
 let showArchived = false;
 
+// Main categories the user has opened. Groups start folded so long lists stay short; remembered on this device.
+const OPEN_KEY = 'vmm.catOpen';
+const openCats = (() => { try { return new Set(JSON.parse(localStorage.getItem(OPEN_KEY) || '[]')); } catch { return new Set(); } })();
+const saveOpen = () => { try { localStorage.setItem(OPEN_KEY, JSON.stringify([...openCats])); } catch { /* not saved: fine */ } };
+
 const catLabel = (c) => (c.parentId ? `${cats.name(c.parentId)} › ${c.name}` : c.name);
 
 export async function categoriesScreen(root, ctx, { hub = false } = {}) {
@@ -32,25 +37,42 @@ export async function categoriesScreen(root, ctx, { hub = false } = {}) {
         <span class="row"><button class="btn small primary" data-accept="${esc(c.id)}">Accept</button><button class="btn small" data-act="${esc(c.id)}">…</button></span></div>`).join('')}</div></div>` : ''}
     <div class="row between" style="margin-bottom:12px">
       <div class="seg" style="min-width:200px"><button data-ct="expense" class="${catType === 'expense' ? 'on' : ''}">Expense</button><button data-ct="income" class="${catType === 'income' ? 'on' : ''}">Income</button></div>
-      <div class="row"><label class="check small"><input type="checkbox" id="arch" ${showArchived ? 'checked' : ''}> Show archived</label><button class="btn primary small" data-addmain>+ Category</button></div>
+      <div class="row"><label class="check small"><input type="checkbox" id="arch" ${showArchived ? 'checked' : ''}> Show archived</label><button class="btn small" data-foldall>${tree.some(({ cat }) => openCats.has(cat.id)) ? 'Collapse all' : 'Expand all'}</button><button class="btn primary small" data-addmain>+ Category</button></div>
     </div>
     ${tree.length ? tree.map(({ cat, subs }) => `
       <div class="card" style="padding:6px 12px">
         <div class="list-item" style="border:0">
           <span class="avatar" style="background:color-mix(in srgb, ${esc(cat.color)} 20%, transparent)">${esc(cat.icon || '🏷️')}</span>
-          <span class="main"><span class="title">${esc(cat.name)} ${cat.archived ? '<span class="chip">archived</span>' : ''}${cat.pendingReview ? '<span class="chip">new</span>' : ''}</span><span class="sub">${subs.length} subcategories · ${cats.usageCount(cat.id)} entries</span></span>
+          <span class="main" data-fold="${esc(cat.id)}" role="button" tabindex="0" aria-expanded="${openCats.has(cat.id)}" style="cursor:pointer"><span class="title"><span class="fold" aria-hidden="true">▸</span> ${esc(cat.name)} ${cat.archived ? '<span class="chip">archived</span>' : ''}${cat.pendingReview ? '<span class="chip">new</span>' : ''}</span><span class="sub">${subs.length} subcategories · ${cats.usageCount(cat.id)} entries</span></span>
           <span class="row" style="flex-wrap:nowrap"><button class="icon-btn" data-up="${esc(cat.id)}" aria-label="Move up">↑</button><button class="icon-btn" data-down="${esc(cat.id)}" aria-label="Move down">↓</button><button class="icon-btn" data-act="${esc(cat.id)}" aria-label="Actions">⋯</button></span>
         </div>
+        <div data-subs="${esc(cat.id)}" ${openCats.has(cat.id) ? '' : 'hidden'}>
         ${subs.map((s) => `<div class="list-item" style="padding-left:20px"><span class="avatar">${esc(cats.icon(s))}</span><span class="main"><span class="title">${esc(s.name)} ${s.archived ? '<span class="chip">archived</span>' : ''}${s.pendingReview ? '<span class="chip">new</span>' : ''}</span><span class="sub">${cats.usageCount(s.id)} entries</span></span>
           <span class="row" style="flex-wrap:nowrap"><button class="icon-btn" data-up="${esc(s.id)}" aria-label="Move up">↑</button><button class="icon-btn" data-down="${esc(s.id)}" aria-label="Move down">↓</button><button class="icon-btn" data-act="${esc(s.id)}" aria-label="Actions">⋯</button></span></div>`).join('')}
+        </div>
       </div>`).join('') : empty('No categories.')}`;
 
+  // fold / unfold in place: no re-render, so the page stays where it is
+  const setOpen = (id, open) => {
+    open ? openCats.add(id) : openCats.delete(id);
+    root.querySelector(`[data-subs="${CSS.escape(id)}"]`)?.toggleAttribute('hidden', !open);
+    root.querySelector(`[data-fold="${CSS.escape(id)}"]`)?.setAttribute('aria-expanded', open);
+  };
+
+  root.onkeydown = (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.dataset?.fold) { e.preventDefault(); e.target.click(); } };
   $('#arch', root).onchange = (e) => { showArchived = e.target.checked; ctx.refresh(); };
   root.onclick = async (e) => {
+    const fold = e.target.closest('[data-fold]');
+    if (fold) { setOpen(fold.dataset.fold, !openCats.has(fold.dataset.fold)); saveOpen(); return; }
     const b = e.target.closest('button');
     if (!b) return;
     const d = b.dataset;
-    if (d.ct) { catType = d.ct; ctx.refresh(); }
+    if ('foldall' in d) {
+      const open = !tree.some(({ cat }) => openCats.has(cat.id));
+      tree.forEach(({ cat }) => setOpen(cat.id, open));
+      saveOpen();
+      b.textContent = open ? 'Collapse all' : 'Expand all';
+    } else if (d.ct) { catType = d.ct; ctx.refresh(); }
     else if ('addmain' in d) {
       const name = await promptDialog({ title: `New ${catType} category`, label: 'Name' });
       if (name?.trim()) { await cats.create({ name, type: catType }); ctx.refresh(); }
@@ -84,7 +106,7 @@ async function categoryActions(id, ctx) {
     if (choice === 'edit') await editCategory(c);
     else if (choice === 'addsub') {
       const name = await promptDialog({ title: `New subcategory in ${c.name}`, label: 'Name' });
-      if (name?.trim()) await cats.create({ name, type: c.type, parentId: id });
+      if (name?.trim()) { await cats.create({ name, type: c.type, parentId: id }); openCats.add(id); saveOpen(); }
     } else if (choice === 'move') {
       const mains = cats.tree(c.type).filter((x) => x.cat.id !== c.parentId).map((x) => [x.cat.id, `${x.cat.icon} ${x.cat.name}`]);
       const to = await pickDialog(`Move “${c.name}” to…`, mains);

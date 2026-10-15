@@ -91,11 +91,12 @@ async function render() {
   const { route } = parseHash();
   const def = current.routes[route] || current.routes[current.home];
   const id = current.routes[route] ? route : current.home;
+  // read the scroll position before the old screen goes (an empty #view shrinks the page and resets it)
+  const y = window.scrollY;
   // fresh #view each render: drops listeners the previous screen attached
   const old = $('#view');
   const view = old.cloneNode(false);
   old.replaceWith(view);
-  const y = window.scrollY;
   destroyCharts();
   const title = typeof def.title === 'function' ? def.title(ctx) : def.title;
   const logo = !def.back && (id === current.home) ? '<img class="top-logo" src="icons/logo-160.png" alt="" width="24" height="31">' : '';
