@@ -27,6 +27,12 @@ function sanitize(v) {
 const moneyInput = (field, id, val, label, extra = '') => `<label class="money"><span class="vh">${esc(label)}</span><span class="cur">₹</span>
   <input class="money-in" type="text" inputmode="decimal" autocomplete="off" placeholder="0" data-f="${field}" ${id ? `data-id="${esc(id)}"` : ''} value="${plain(val)}" ${extra}></label>`;
 
+// The balance your entries say (Online + Cash from the transactions), shown in brackets beside what the banks / cash really hold.
+const hasEntries = () => db.live('transactions').length > 0;
+const byEntries = (n) => (hasEntries() ? ` <span class="by-entries num" title="As per entries">(${money(n)})</span>` : '');
+const entriesNote = () => (hasEntries() ? '<p class="muted small" style="margin:0 4px 10px">Amounts in (brackets) are the balance as per your entries, to compare with what is really there.</p>' : '');
+const famEntries = (kind) => FAMILY.reduce((t, f) => t + tx.inHand(f.id)[kind], 0);
+
 const ago = (iso) => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '');
 
 // ---------------------------------------------------------------- summary card (used on Home / Dashboard)
@@ -149,7 +155,7 @@ function overview(box, ctx) {
   const cards = H.banks().filter((b) => b.cc);
 
   box.innerHTML = `
-    <div class="hero"><div class="k">Actual balance</div><div class="v num" data-bind="actual">${money(r.actual)}</div>
+    <div class="hero"><div class="k">Actual balance</div><div class="v num"><span data-bind="actual">${money(r.actual)}</span>${byEntries(tx.inHandAll())}</div>
       <div class="eq num"><span>Usable <b data-bind="usableTotal">${money(r.usableTotal)}</b></span><span>+ Cash <b data-bind="cash">${money(r.cash)}</b></span><span>− Cards <b data-bind="cc">${money(r.cc)}</b></span></div></div>
     <div class="status ${st[0]}"><b class="num">${st[1]}</b><small>${st[2]}</small></div>
     ${r.expected != null ? `<p class="muted small" style="margin:8px 4px 0">Compared with <b class="num">${money(r.expected)}</b>, the Balance in hand from your entries (see the Summary page).</p>` : ''}
@@ -157,14 +163,15 @@ function overview(box, ctx) {
     <h2 class="sec">Who has what</h2>
     <div class="grid two">${r.people.map((p, i) => `
       <div class="card"><div class="card-head">${pbadge(p.id)}</div>
-        <div class="stat" style="padding:0"><div class="label">Balance after cards &amp; transfer, plus cash</div><div class="value" data-bind="people.${i}.net">${money(p.net)}</div></div>
+        <div class="stat" style="padding:0"><div class="label">Balance after cards &amp; transfer, plus cash</div><div class="value"><span data-bind="people.${i}.net">${money(p.net)}</span>${byEntries(tx.inHand(p.id).total)}</div></div>
         <div class="list" style="margin-top:8px">
-          <div class="row between small" style="padding:6px 0"><span>Banks (usable)</span><span class="num" data-bind="people.${i}.usableTotal">${money(p.usableTotal)}</span></div>
-          <div class="row between small" style="padding:6px 0"><span>Cash</span><span class="num" data-bind="people.${i}.cash">${money(p.cash)}</span></div>
+          <div class="row between small" style="padding:6px 0"><span>Banks (usable)</span><span><span class="num" data-bind="people.${i}.usableTotal">${money(p.usableTotal)}</span>${byEntries(tx.inHand(p.id).online)}</span></div>
+          <div class="row between small" style="padding:6px 0"><span>Cash</span><span><span class="num" data-bind="people.${i}.cash">${money(p.cash)}</span>${byEntries(tx.inHand(p.id).cash)}</span></div>
           <div class="row between small" style="padding:6px 0"><span>Cards to pay</span><span class="num expense" data-bind="people.${i}.ccToPay">${money(p.ccToPay)}</span></div>
           ${p.transfer ? `<div class="row between small" style="padding:6px 0"><span>Transfer deducted</span><span class="num expense">${money(p.transfer)}</span></div>` : ''}
         </div></div>`).join('')}</div>
-    <div class="card"><div class="row between"><b>Total (VJ + MM)</b><b class="num" data-bind="total">${money(r.total)}</b></div></div>
+    <div class="card"><div class="row between"><b>Total (VJ + MM)</b><span><b class="num" data-bind="total">${money(r.total)}</b>${byEntries(tx.inHandAll())}</span></div></div>
+    ${entriesNote()}
 
     <h2 class="sec">Cards: who needs to pay</h2>
     <div class="card">${cards.length ? `<div class="list">${cards.map((b) => `<div class="list-item"><span class="main"><span class="title">${esc(b.name || 'Bank')} card</span><span class="sub">${pbadge(b.person)} account</span></span>
@@ -196,8 +203,9 @@ function overview(box, ctx) {
 function banks(box, ctx) {
   const r = H.position();
   box.innerHTML = `
-    <div class="row" style="margin-bottom:12px"><span class="chip">Balance <b class="num" data-bind="bankTotal">${money(r.bankTotal)}</b></span><span class="chip">Usable <b class="num" data-bind="usableTotal">${money(r.usableTotal)}</b></span></div>
-    ${FAMILY.map((f) => `<h2 class="sec">${pbadge(f.id)} ${esc(f.name)}'s banks</h2>
+    <div class="row" style="margin-bottom:12px"><span class="chip">Balance <b class="num" data-bind="bankTotal">${money(r.bankTotal)}</b>${byEntries(famEntries('online'))}</span><span class="chip">Usable <b class="num" data-bind="usableTotal">${money(r.usableTotal)}</b></span></div>
+    ${entriesNote()}
+    ${FAMILY.map((f, pi) => `<h2 class="sec">${pbadge(f.id)} ${esc(f.name)}'s banks <span class="muted small num" data-bind="people.${pi}.bankTotal">${money(r.people[pi].bankTotal)}</span>${byEntries(tx.inHand(f.id).online)}</h2>
       ${H.banks(f.id).map((b, i, arr) => `<div class="card">
         <div class="row" style="flex-wrap:nowrap"><input class="name-input" data-f="bank.name" data-id="${esc(b.id)}" value="${esc(b.name)}" placeholder="Bank name" maxlength="24" aria-label="Bank name" autocomplete="off">
           <button class="icon-btn" data-move="-1" data-id="${esc(b.id)}" aria-label="Move up" ${i === 0 ? 'disabled' : ''}>↑</button>
@@ -217,8 +225,9 @@ function banks(box, ctx) {
 function cash(box, ctx) {
   const r = H.position();
   box.innerHTML = `
-    <div class="row" style="margin-bottom:12px"><span class="chip">Total cash <b class="num" data-bind="cash">${money(r.cash)}</b></span></div>
-    ${FAMILY.map((f, pi) => `<h2 class="sec">${pbadge(f.id)} ${esc(f.name)}'s cash <span class="muted small num" data-bind="person-cash-${esc(f.id)}">${money(r.people[pi].cash)}</span></h2>
+    <div class="row" style="margin-bottom:12px"><span class="chip">Total cash <b class="num" data-bind="cash">${money(r.cash)}</b>${byEntries(famEntries('cash'))}</span></div>
+    ${entriesNote()}
+    ${FAMILY.map((f, pi) => `<h2 class="sec">${pbadge(f.id)} ${esc(f.name)}'s cash <span class="muted small num" data-bind="person-cash-${esc(f.id)}">${money(r.people[pi].cash)}</span>${byEntries(tx.inHand(f.id).cash)}</h2>
       <form class="row" data-quick="${esc(f.id)}" style="flex-wrap:nowrap;margin-bottom:8px">
         ${moneyInput('quick', null, null, 'New cash amount')}<input name="note" placeholder="Note (optional)" maxlength="30" aria-label="Note" style="max-width:40%">
         <button class="btn primary" ${H.cashEntries(f.id).length >= H.MAX_ROWS ? 'disabled' : ''}>＋</button></form>

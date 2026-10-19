@@ -10,7 +10,7 @@ import * as budgets from '../budgets.js';
 import * as sync from '../sync.js';
 import * as live from '../livesync.js';
 import { qrSvg, scanQR } from './qr.js';
-import { onSwipe, installBanner, syncReminder, $, money, toast, confirmDialog, promptDialog, pickFiles, shareOrDownload, empty, progress, relTime, daysSince, sheet } from './components.js';
+import { onSwipe, installBanner, syncReminder, $, money, toast, confirmDialog, promptDialog, pickFiles, shareOrDownload, empty, progress, relTime, daysSince, sheet, monthTitle, pickMonth } from './components.js';
 import { txRow, entryScreen, transactionsScreen, reportsScreen } from './shared-screens.js';
 import { positionScreen, positionCard } from './position-screens.js';
 import { categoryDetailScreen, categoryTitle, categoryBack } from './stats-screens.js';
@@ -71,7 +71,7 @@ async function homeScreen(root, ctx) {
   root.innerHTML = `
     <div class="row between" style="margin-bottom:12px">
       <button class="btn small" data-mnav="-1" aria-label="Previous month">‹</button>
-      <b>${esc(monthLabel(month))}</b>
+      ${monthTitle(monthLabel(month))}
       <button class="btn small" data-mnav="1" aria-label="Next month" ${month >= cur ? 'disabled' : ''}>›</button>
     </div>
     ${inHandCard(month)}
@@ -96,7 +96,8 @@ async function homeScreen(root, ctx) {
     history.replaceState(null, '', next === cur ? '#/home' : `#/home?m=${next}`);
     ctx.refresh();
   };
-  root.onclick = (e) => {
+  root.onclick = async (e) => {
+    if (e.target.closest('[data-mpick]')) { const m = await pickMonth(month, { max: cur }); if (m) showMonth(m); return; }
     const b = e.target.closest('[data-mnav]');
     if (!b || b.disabled) return;
     showMonth(addMonths(month, Number(b.dataset.mnav)));

@@ -11,7 +11,7 @@ import * as sync from '../sync.js';
 import * as hubfile from '../hubfile.js';
 import * as live from '../livesync.js';
 import { qrSvg } from './qr.js';
-import { $, $$, money, toast, confirmDialog, promptDialog, pickFiles, shareOrDownload, empty, progress, relTime, daysSince, drawChart, cssVar, sheet, onSwipe } from './components.js';
+import { $, $$, money, toast, confirmDialog, promptDialog, pickFiles, shareOrDownload, empty, progress, relTime, daysSince, drawChart, cssVar, sheet, onSwipe, monthTitle, pickMonth } from './components.js';
 import { entryScreen, transactionsScreen, reportsScreen } from './shared-screens.js';
 import { positionScreen, positionCard } from './position-screens.js';
 import { categoryDetailScreen, categoryTitle, categoryBack } from './stats-screens.js';
@@ -46,7 +46,7 @@ async function dashboardScreen(root, ctx) {
     ${hubfile.supported && !hubfile.status.linked ? `<div class="banner"><b>Link your master file</b><p class="small">Save everything to a family.json on this computer so nothing is ever lost.</p><div class="row"><a class="btn primary small" href="#/masterfile">Set up</a></div></div>` : ''}
     <div class="row between" style="margin-bottom:12px">
       <button class="btn small" data-mnav="-1" aria-label="Previous month">‹</button>
-      <b>${esc(monthLabel(month))}</b>
+      ${monthTitle(monthLabel(month))}
       <button class="btn small" data-mnav="1" aria-label="Next month" ${month >= cur ? 'disabled' : ''}>›</button>
     </div>
     ${pend ? `<div class="banner info"><b>${pend} new ${pend === 1 ? 'category' : 'categories'} to review</b><div class="row"><a class="btn small primary" href="#/categories">Review</a></div></div>` : ''}
@@ -84,7 +84,8 @@ async function dashboardScreen(root, ctx) {
     history.replaceState(null, '', next === cur ? '#/dashboard' : `#/dashboard?m=${next}`);
     ctx.refresh();
   };
-  root.onclick = (e) => {
+  root.onclick = async (e) => {
+    if (e.target.closest('[data-mpick]')) { const m = await pickMonth(month, { max: cur }); if (m) showMonth(m); return; }
     const b = e.target.closest('[data-mnav]');
     if (!b || b.disabled) return;
     showMonth(addMonths(month, Number(b.dataset.mnav)));

@@ -7,7 +7,7 @@ import * as cats from '../categories.js';
 import * as tx from '../transactions.js';
 import * as recurring from '../recurring.js';
 import * as reports from '../reports.js';
-import { onSwipe, installBanner, syncReminder, moneyC, $, $$, money, toast, confirmDialog, promptDialog, empty, download, compressImage, drawChart, cssVar, sheet, memberOptions } from './components.js';
+import { onSwipe, installBanner, syncReminder, moneyC, $, $$, money, toast, confirmDialog, promptDialog, empty, download, drawChart, monthTitle, pickMonth, cssVar, sheet, memberOptions } from './components.js';
 
 // ---------------------------------------------------------------- rows
 
@@ -59,7 +59,7 @@ export function txRow(t, { showMember = false, as = null } = {}) {
   if (t.note) parts.push(t.note);
   const sign = famX ? (wholeFamily ? '' : incoming ? '+' : '−') : t.type === 'income' ? '+' : t.type === 'expense' ? '−' : '';
   const amountClass = famX ? (wholeFamily ? 'transfer' : incoming ? 'income' : 'expense') : t.type;
-  const inner = `<span class="avatar">${ico}${payIcon(t)}</span><span class="main"><span class="title">${esc(title)}${t.receiptPhoto ? ' 📎' : ''}${t.recurringId ? ' 🔁' : ''}</span><span class="sub">${esc(parts.join(' · ') || tx.accountName(t.accountId))}</span></span><span class="num ${amountClass}">${sign}${money(t.amount)}</span>`;
+  const inner = `<span class="avatar">${ico}${payIcon(t)}</span><span class="main"><span class="title">${esc(title)}${t.recurringId ? ' 🔁' : ''}</span><span class="sub">${esc(parts.join(' · ') || tx.accountName(t.accountId))}</span></span><span class="num ${amountClass}">${sign}${money(t.amount)}</span>`;
   return tx.canEdit(t)
     ? `<a class="list-item" href="#/add?id=${esc(t.id)}">${inner}</a>`
     : `<div class="list-item">${inner}</div>`;
@@ -103,11 +103,11 @@ export async function entryScreen(root, ctx) {
 
   const accounts = tx.formAccounts(existing?.accountId);
   const st = existing
-    ? { ...existing, amount: String(existing.amount), tagsText: (existing.tags || []).join(' '), repeat: '', xfer: existing.toMemberId ? 'member' : 'own', direction: existing.direction || 'out' }
+    ? { ...existing, amount: String(existing.amount), repeat: '', xfer: existing.toMemberId ? 'member' : 'own', direction: existing.direction || 'out' }
     : {
         type: ctx.params.get('type') || 'expense', amount: '', date: /^\d{4}-\d{2}-\d{2}$/.test(ctx.params.get('date') || '') ? ctx.params.get('date') : todayStr(), categoryId: null, subcategoryId: null,
         accountId: accounts[0]?.id || null, toAccountId: null,
-        note: '', tagsText: '', receiptPhoto: null, repeat: '', xfer: 'own', direction: 'out',
+        note: '', repeat: '', xfer: 'own', direction: 'out',
       };
 
   // earlier notes for the browser's autofill on the Note field, most used first
@@ -177,15 +177,6 @@ export async function entryScreen(root, ctx) {
           <select id="repeat"><option value="">Does not repeat</option>${FREQUENCIES.map(([v, l]) => `<option value="${v}" ${v === st.repeat ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`}
         <label class="field"><span>Note</span><input id="note" maxlength="200" value="${esc(st.note)}" placeholder="What was it for?" list="note-list" autocomplete="off"></label>
         <datalist id="note-list">${noteOptions}</datalist>
-        <label class="field"><span>Tags <span class="muted">(space separated)</span></span><input id="tags" value="${esc(st.tagsText)}" placeholder="#trip #diwali"></label>
-        <div>
-          <span class="muted small">Receipt photo (optional)</span>
-          <div class="row">
-            <label class="btn small">📷 ${st.receiptPhoto ? 'Replace' : 'Add photo'}<input id="photo" type="file" accept="image/*" hidden></label>
-            ${st.receiptPhoto ? '<button type="button" class="btn small" data-rmphoto>Remove</button>' : ''}
-          </div>
-          ${st.receiptPhoto ? `<img class="receipt-img" alt="Receipt" src="${st.receiptPhoto}" style="margin-top:8px">` : ''}
-        </div>
         <p id="err" class="danger-text small" role="alert"></p>
         <div class="row">
           <button class="btn primary grow" data-save>${existing ? 'Save changes' : 'Save'}</button>
@@ -202,7 +193,6 @@ export async function entryScreen(root, ctx) {
     if (g('#date')) st.date = g('#date').value;
     if (g('#repeat')) st.repeat = g('#repeat').value;
     if (g('#note')) st.note = g('#note').value;
-    if (g('#tags')) st.tagsText = g('#tags').value;
   }
 
   async function save(again) {
@@ -214,11 +204,10 @@ export async function entryScreen(root, ctx) {
     if (st.type === 'transfer') {
       if (!st.accountId || (st.xfer !== 'member' && !st.toAccountId)) { err.textContent = st.xfer === 'member' ? 'Choose your account.' : 'Choose both accounts for a transfer.'; return; }
     } else if (!st.categoryId) { err.textContent = 'Choose a category.'; return; }
-    const tags = st.tagsText.split(/[\s,]+/).filter(Boolean).map((t) => (t.startsWith('#') ? t : `#${t}`));
     const data = {
-      type: st.type, amount, date: st.date, note: st.note.trim(), tags, paymentMode: db.get('accounts', st.accountId)?.type === 'cash' ? 'cash' : 'online',
+      type: st.type, amount, date: st.date, note: st.note.trim(), paymentMode: db.get('accounts', st.accountId)?.type === 'cash' ? 'cash' : 'online',
       categoryId: st.type === 'transfer' ? null : st.categoryId, subcategoryId: st.type === 'transfer' ? null : st.subcategoryId,
-      accountId: st.accountId, toAccountId: st.type === 'transfer' && st.xfer !== 'member' ? st.toAccountId : null, receiptPhoto: st.receiptPhoto || null,
+      accountId: st.accountId, toAccountId: st.type === 'transfer' && st.xfer !== 'member' ? st.toAccountId : null,
       toMemberId: st.type === 'transfer' && st.xfer === 'member' ? otherMember(cfg.memberId).id : null,
       direction: st.type === 'transfer' && st.xfer === 'member' ? st.direction : null,
     };
@@ -226,13 +215,12 @@ export async function entryScreen(root, ctx) {
     else {
       await tx.add(data);
       if (st.repeat) {
-        const { receiptPhoto, ...tpl } = data;
-        await recurring.create(tpl, st.repeat, recurring.nextDate(st.date, st.repeat));
+        await recurring.create(data, st.repeat, recurring.nextDate(st.date, st.repeat));
       }
     }
     toast(existing ? 'Entry updated' : 'Saved');
     if (again) {
-      Object.assign(st, { amount: '', note: '', tagsText: '', receiptPhoto: null, repeat: '', subcategoryId: null });
+      Object.assign(st, { amount: '', note: '', repeat: '', subcategoryId: null });
       draw();
       window.scrollTo({ top: 0, behavior: 'smooth' }); // ready for the next category
     } else (existing || ctx.params.get('date')) && history.length > 1 ? history.back() : ctx.go('transactions');
@@ -258,8 +246,7 @@ export async function entryScreen(root, ctx) {
         sync();
         const name = await promptDialog({ title: `New subcategory in ${cats.name(st.categoryId)}`, label: 'Subcategory name' });
         if (name?.trim()) { const c = await cats.create({ name, type: st.type, parentId: st.categoryId }); st.subcategoryId = c.id; draw(); }
-      } else if ('rmphoto' in b.dataset) { sync(); st.receiptPhoto = null; draw(); }
-      else if ('again' in b.dataset) save(true);
+      } else if ('again' in b.dataset) save(true);
       else if ('delete' in b.dataset) {
         if (await confirmDialog('Delete this entry? It will also be removed from the Hub at your next sync.', { okText: 'Delete', danger: true })) {
           await tx.remove(existing.id);
@@ -272,11 +259,6 @@ export async function entryScreen(root, ctx) {
     const dateIn = $('#date', root);
     if (dateIn) dateIn.onclick = () => { try { dateIn.showPicker?.(); } catch { /* ignore */ } };
     if (dateIn) dateIn.onchange = () => { sync(); if (st.date) draw(); };
-    const photo = $('#photo', root);
-    if (photo) photo.onchange = async () => {
-      if (!photo.files[0]) return;
-      try { sync(); st.receiptPhoto = await compressImage(photo.files[0]); draw(); } catch (err) { toast(err.message); }
-    };
   }
 
   draw();
@@ -368,7 +350,7 @@ export async function transactionsScreen(root, ctx) {
     <div class="card">
       <div class="row">
         ${isMonth ? '<button class="btn small" data-mnav="-1" aria-label="Previous month">‹</button>' : ''}
-        <b class="grow" style="text-align:center">${isMonth ? esc(monthLabel(f.m)) : f.m === 'all' ? 'All time' : esc(f.m)}</b>
+        <span class="grow" style="text-align:center">${monthTitle(isMonth ? monthLabel(f.m) : f.m === 'all' ? 'All time' : f.m)}</span>
         ${isMonth ? '<button class="btn small" data-mnav="1" aria-label="Next month">›</button>' : ''}
         <button class="btn small" data-allmonths>${f.m === 'all' ? 'This month' : 'All time'}</button>
       </div>
@@ -430,6 +412,7 @@ export async function transactionsScreen(root, ctx) {
     else if (b.dataset.w) setF({ w: b.dataset.w === 'me' ? '' : b.dataset.w });
     else if (b.dataset.mnav) setF({ m: addMonths(f.m, Number(b.dataset.mnav)) });
     else if ('allmonths' in b.dataset) setF({ m: f.m === 'all' ? thisMonth() : 'all' });
+    else if ('mpick' in b.dataset) { const m = await pickMonth(isMonth ? f.m : thisMonth()); if (m) setF({ m }); }
     else if ('moreRows' in b.dataset) { shown += 200; ctx.refresh(); }
     else if ('csv' in b.dataset) { download(`mm-transactions-${stamp()}.csv`, reports.toCSV(list), 'text/csv'); }
     else if ('bulk' in b.dataset) bulkRecategorize([...selected], ctx);
@@ -455,7 +438,7 @@ function hubTable(list) {
       <td><input type="checkbox" data-sel="${esc(t.id)}" aria-label="Select"></td>
       <td class="num">${esc(t.date)}</td>
       <td><span class="dot" style="background:${esc(tx.memberColor(t.ownerId))}"></span> ${esc(tx.memberName(t.ownerId))}</td>
-      <td>${esc(cats.pathLabel(t))}</td><td>${esc(t.note)}${t.receiptPhoto ? ' 📎' : ''}</td><td>${payIcon(t)} ${esc(tx.accountName(t.accountId))}</td>
+      <td>${esc(cats.pathLabel(t))}</td><td>${esc(t.note)}</td><td>${payIcon(t)} ${esc(tx.accountName(t.accountId))}</td>
       <td class="r num ${t.type}">${t.type === 'income' ? '+' : t.type === 'expense' ? '−' : ''}${money(t.amount)}</td>
       <td>${tx.canEdit(t) ? `<a href="#/add?id=${esc(t.id)}" aria-label="Edit">✎</a>` : ''}</td></tr>`).join('')}</tbody></table></div></div>`;
 }

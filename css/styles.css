@@ -181,7 +181,10 @@ button.list-item:hover, a.list-item:hover { background: var(--bg); }
 .chips button.on { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
 
 .amount-input { font-size: 2rem; font-weight: 700; text-align: center; min-height: 64px; font-variant-numeric: tabular-nums; }
-.receipt-img { max-width: 100%; max-height: 220px; border-radius: 10px; border: 1px solid var(--line); }
+.mpick { border: 0; background: none; color: inherit; font: inherit; font-weight: 700; cursor: pointer; padding: 6px 10px; border-radius: 8px; }
+.mpick:hover, .mpick:focus-visible { background: var(--brand-soft); }
+.mpick span { font-size: .75em; color: var(--muted); }
+.by-entries { color: var(--muted); font-weight: 500; font-size: .85em; }
 
 .empty { text-align: center; padding: 28px 12px; color: var(--muted); }
 .empty-icon { font-size: 2rem; }
@@ -257,6 +260,7 @@ dialog.sheet::backdrop { background: rgba(0,0,0,.45); }
 :root[data-theme="dark"] .hero { background: linear-gradient(135deg, #13224a, #24418a); }
 .hero .k { font-size: .85rem; opacity: .8; }
 .hero .v { font-size: 2.1rem; font-weight: 750; margin: 6px 0 12px; overflow-wrap: anywhere; }
+.hero .by-entries { color: rgba(255,255,255,.75); }
 .hero .eq { display: flex; gap: 6px; flex-wrap: wrap; font-size: .78rem; }
 .hero .eq span { background: rgba(255,255,255,.16); padding: 4px 10px; border-radius: 99px; white-space: nowrap; }
 .status { margin-top: 12px; padding: 12px 16px; border-radius: 14px; display: flex; flex-direction: column; }
