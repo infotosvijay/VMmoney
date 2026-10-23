@@ -343,9 +343,11 @@ export async function transactionsScreen(root, ctx) {
     ${list.length > shown ? `<button class="btn" style="width:100%" data-more-rows>Show ${Math.min(200, list.length - shown)} more (${list.length - shown} left)</button>` : ''}
 `;
 
-  const hasChanges = !hub && db.all('transactions').some((t) => t.ownerId === cfg.memberId && (!cfg.lastExportAt || t.updatedAt > cfg.lastExportAt));
+  const peer = hub ? null : otherMember(cfg.memberId);
+  const peerAt = peer && cfg.peerSyncAt?.[peer.id];
+  const hasChanges = !hub && db.all('transactions').some((t) => t.ownerId === cfg.memberId && (!peerAt || t.updatedAt > peerAt));
   root.innerHTML = `
-    ${hub ? '' : installBanner() + syncReminder(hasChanges)}
+    ${hub ? '' : installBanner() + syncReminder(hasChanges, peer)}
     ${view.seg ? whoSeg(view.w) : ''}
     <div class="card">
       <div class="row">

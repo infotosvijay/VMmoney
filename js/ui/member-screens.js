@@ -141,14 +141,14 @@ async function familyScreen(root) {
 
 async function syncScreen(root, ctx) {
   const log = db.all('syncLog').sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 10);
-  const stale = daysSince(cfg.lastExportAt) >= 7;
   const other = otherMember(cfg.memberId);
+  const stale = daysSince(cfg.peerSyncAt?.[other.id]) >= 7;
   const pending = sync.relayPending();
   root.innerHTML = `
     <div class="card"><h2>Status</h2>
-      <p>Last sent to Hub: <b>${esc(relTime(cfg.lastExportAt))}</b> ${stale ? '<span class="badge">overdue</span>' : ''}</p>
+      <p>Last sent to Hub: <b>${esc(relTime(cfg.lastExportAt))}</b></p>
       <p>Last family update received: <b>${esc(relTime(cfg.lastImportAt))}</b></p>
-      <p>Last synced with ${esc(other.name)}'s phone: <b>${esc(relTime(cfg.peerSyncAt?.[other.id]))}</b></p>
+      <p>Last synced with ${esc(other.name)}'s phone: <b>${esc(relTime(cfg.peerSyncAt?.[other.id]))}</b> ${stale ? '<span class="badge">overdue</span>' : ''}</p>
       ${pending ? `<p class="muted small">${pending} change${pending === 1 ? '' : 's'} from ${esc(other.name)}'s phone will go to the laptop with your next sync.</p>` : ''}
     </div>
     <div class="card stack"><h2>Live sync (same wifi)</h2>

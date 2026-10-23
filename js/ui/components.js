@@ -195,10 +195,11 @@ export function installBanner() {
 }
 
 
-/** "Send your data to the Hub" nudge when changes are older than a week. */
-export function syncReminder(changedSince) {
-  if (!changedSince || daysSince(cfg.lastExportAt) < 7) return '';
-  return `<div class="banner"><b>Time to sync with the Hub</b><p class="small">Last sent ${esc(relTime(cfg.lastExportAt))}. This also works as a backup.</p><div class="row"><a class="btn primary small" href="#/sync">Sync now</a></div></div>`;
+/** "Sync with the other phone" nudge when there are changes and the last phone-to-phone sync is a week old. */
+export function syncReminder(changedSince, other) {
+  const last = cfg.peerSyncAt?.[other?.id];
+  if (!changedSince || !other || daysSince(last) < 7) return '';
+  return `<div class="banner"><b>Time to sync with ${esc(other.name)}'s phone</b><p class="small">Last synced ${esc(relTime(last))}. Keeps both phones up to date.</p><div class="row"><a class="btn primary small" href="#/sync">Sync now</a></div></div>`;
 }
 
 // ---- swipe between tabs (touch screens) ----
