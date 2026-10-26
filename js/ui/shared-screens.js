@@ -13,6 +13,39 @@ import { onSwipe, installBanner, syncReminder, moneyC, $, $$, money, toast, conf
 
 const yesterday = () => { const d = new Date(); d.setDate(d.getDate() - 1); return localDate(d); };
 
+/** Evaluates a typed amount like "120+45.5*2" or "(300-20)/4" (+ − × ÷ and brackets). NaN if it is not valid. */
+export function evalAmount(input) {
+  const s = String(input).replace(/[,\s]/g, '').replace(/[×xX]/g, '*').replace(/÷/g, '/').replace(/[−–]/g, '-');
+  let i = 0;
+  const num = () => {
+    const m = /^\d*\.?\d+|^\d+\./.exec(s.slice(i));
+    if (!m) throw 0;
+    i += m[0].length;
+    return parseFloat(m[0]);
+  };
+  const factor = () => {
+    if (s[i] === '-') { i++; return -factor(); }
+    if (s[i] === '+') { i++; return factor(); }
+    if (s[i] === '(') { i++; const v = expr(); if (s[i++] !== ')') throw 0; return v; }
+    return num();
+  };
+  const term = () => {
+    let v = factor();
+    while (s[i] === '*' || s[i] === '/') v = s[i++] === '*' ? v * factor() : v / factor();
+    return v;
+  };
+  const expr = () => {
+    let v = term();
+    while (s[i] === '+' || s[i] === '-') v = s[i++] === '+' ? v + term() : v - term();
+    return v;
+  };
+  try {
+    const v = expr();
+    return i === s.length && Number.isFinite(v) ? v : NaN;
+  } catch { return NaN; }
+}
+const hasMath = (s) => /\d\s*[-+*/×xX÷−–]|^\s*\(/.test(String(s));
+
 /** Which entries a phone screen shows: mine, the partner's, or the whole family. The hub always sees everyone. */
 export function viewOf(P) {
   if (cfg.mode === 'hub') return { scope: 'all', memberId: '', w: '', seg: false };
@@ -172,6 +205,7 @@ export async function entryScreen(root, ctx) {
         </div>
         <label class="field"><span>Amount (${esc(cfg.currency || 'INR')})</span>
           <input id="amount" class="amount-input" inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(st.amount)}">
+          <span id="amt-calc" class="muted small" aria-live="polite"></span>
         </label>
         ${existing || isT ? '' : `<label class="field"><span>Repeat</span>
           <select id="repeat"><option value="">Does not repeat</option>${FREQUENCIES.map(([v, l]) => `<option value="${v}" ${v === st.repeat ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`}
@@ -198,7 +232,7 @@ export async function entryScreen(root, ctx) {
   async function save(again) {
     sync();
     const err = $('#err', root);
-    const amount = Math.round(parseFloat(String(st.amount).replace(/,/g, '')) * 100) / 100;
+    const amount = Math.round(evalAmount(st.amount) * 100) / 100;
     if (!(amount > 0)) { err.textContent = 'Enter an amount greater than zero.'; $('#amount', root).focus(); return; }
     if (!st.date) { err.textContent = 'Pick a date.'; return; }
     if (st.type === 'transfer') {
@@ -259,6 +293,19 @@ export async function entryScreen(root, ctx) {
     const dateIn = $('#date', root);
     if (dateIn) dateIn.onclick = () => { try { dateIn.showPicker?.(); } catch { /* ignore */ } };
     if (dateIn) dateIn.onchange = () => { sync(); if (st.date) draw(); };
+    // Calculator: show the running result while typing "120+45", put it in the box on leaving the field.
+    const amtIn = $('#amount', root), amtCalc = $('#amt-calc', root);
+    const preview = () => {
+      const v = evalAmount(amtIn.value);
+      amtCalc.textContent = hasMath(amtIn.value) ? (Number.isNaN(v) ? '= …' : `= ${money(Math.round(v * 100) / 100)}`) : '';
+    };
+    amtIn.oninput = preview;
+    amtIn.onblur = () => {
+      const v = evalAmount(amtIn.value);
+      if (hasMath(amtIn.value) && !Number.isNaN(v)) { amtIn.value = String(Math.round(v * 100) / 100); st.amount = amtIn.value; }
+      preview();
+    };
+    preview();
   }
 
   draw();
