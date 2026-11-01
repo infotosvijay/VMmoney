@@ -48,7 +48,8 @@ function inHandCard(month) {
 function familyCard(month) {
   if (!tx.hasFamilyData()) return '';
   const spent = (id) => reports.totals(tx.query({ scope: 'all', memberId: id, from: `${month}-01`, to: `${month}-31` })).expense;
-  const rows = FAMILY.map((f) => ({ f, v: spent(f.id), h: tx.inHand(f.id).total }));
+  const upTo = month < thisMonth() ? monthRange(month).to : null; // a past month: in hand as it stood at its end
+  const rows = FAMILY.map((f) => ({ f, v: spent(f.id), h: tx.inHand(f.id, upTo).total }));
   const total = rows.reduce((s, r) => s + r.v, 0);
   const other = otherMember(cfg.memberId);
   return `<a class="card" href="#/reports?w=all" style="display:block;text-decoration:none;color:inherit">

@@ -498,6 +498,7 @@ export async function reportsScreen(root, ctx) {
   const label = mode === 'year' ? d : monthLabel(d);
   const prevLabel = mode === 'year' ? prevKey : monthLabel(prevKey, false);
   const trendEnd = mode === 'year' ? `${d}-12` : d;
+  const upTo = (mode === 'year' ? d < thisMonth().slice(0, 4) : d < thisMonth()) ? rangeOf(d).to : null; // "In hand" at the end of a past period
   const trend = reports.monthlyTrend(q({}), mode === 'year' ? 12 : 6, trendEnd);
   const members = hub ? reports.byMember(list) : [];
   const detail = (id) => `#/category?c=${encodeURIComponent(id)}&d=${d}&p=${mode}&t=${kind}${view.w && view.w !== 'me' ? '&w=' + view.w : ''}`;
@@ -538,7 +539,7 @@ export async function reportsScreen(root, ctx) {
       <p class="muted small no-print" style="margin:8px 2px">Tap a category for its subcategories, month-by-month history and daily entries.</p>
     </div>
     ${hub ? `<div class="card"><h2>Member comparison</h2>${members.length ? `<div class="chart-box"><canvas id="c-mem" aria-label="Members"></canvas></div>
-      <table class="tbl"><thead><tr><th>Member</th><th class="r">Income</th><th class="r">Expense</th><th class="r">In hand</th></tr></thead><tbody>${members.map((m) => `<tr><td><span class="dot" style="background:${esc(m.color)}"></span> ${esc(m.name)}</td><td class="r num income">${money(m.income)}</td><td class="r num expense">${money(m.expense)}</td><td class="r num">${money(tx.inHand(m.id).total)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No data.</p>'}</div>` : ''}
+      <table class="tbl"><thead><tr><th>Member</th><th class="r">Income</th><th class="r">Expense</th><th class="r">In hand</th></tr></thead><tbody>${members.map((m) => `<tr><td><span class="dot" style="background:${esc(m.color)}"></span> ${esc(m.name)}</td><td class="r num income">${money(m.income)}</td><td class="r num expense">${money(m.expense)}</td><td class="r num">${money(tx.inHand(m.id, upTo).total)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No data.</p>'}</div>` : ''}
   `;
 
   root.onclick = (e) => {
