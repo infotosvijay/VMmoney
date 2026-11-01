@@ -185,6 +185,11 @@ button.list-item:hover, a.list-item:hover { background: var(--bg); }
 .mpick:hover, .mpick:focus-visible { background: var(--brand-soft); }
 .mpick span { font-size: .75em; color: var(--muted); }
 .by-entries { color: var(--muted); font-weight: 500; font-size: .85em; }
+.by-entries.hi { color: var(--danger); font-weight: 650; }
+.by-entries.lo, .by-entries.match { color: var(--income); font-weight: 650; }
+.row.match { background: color-mix(in srgb, var(--income) 14%, transparent); border-radius: 8px; padding-left: 8px !important; padding-right: 8px !important; }
+.card.match { background: color-mix(in srgb, var(--income) 14%, var(--card)); }
+.card.match .row.match { background: none; padding-left: 0 !important; padding-right: 0 !important; }
 
 .empty { text-align: center; padding: 28px 12px; color: var(--muted); }
 .empty-icon { font-size: 2rem; }

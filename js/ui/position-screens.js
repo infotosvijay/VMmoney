@@ -30,6 +30,9 @@ const moneyInput = (field, id, val, label, extra = '') => `<label class="money">
 // The balance your entries say (Online + Cash from the transactions), shown in brackets beside what the banks / cash really hold.
 const hasEntries = () => db.live('transactions').length > 0;
 const byEntries = (n) => (hasEntries() ? ` <span class="by-entries num" title="As per entries">(${money(n)})</span>` : '');
+const same = (a, b) => Math.round(a * 100) === Math.round(b * 100);
+/** Bracket coloured against the actual amount: red when the entries say more than is really there, green when less or equal. */
+const vsEntries = (actual, n) => (hasEntries() ? ` <span class="by-entries num ${same(actual, n) ? 'match' : n > actual ? 'hi' : 'lo'}" title="As per entries">(${money(n)})</span>` : '');
 const entriesNote = () => (hasEntries() ? '<p class="muted small" style="margin:0 4px 10px">Amounts in (brackets) are the balance as per your entries, to compare with what is really there.</p>' : '');
 const famEntries = (kind) => FAMILY.reduce((t, f) => t + tx.inHand(f.id)[kind], 0);
 
@@ -161,15 +164,18 @@ function overview(box, ctx) {
     ${r.expected != null ? `<p class="muted small" style="margin:8px 4px 0">Compared with <b class="num">${money(r.expected)}</b>, the Balance in hand from your entries (see the Summary page).</p>` : ''}
 
     <h2 class="sec">Who has what</h2>
-    <div class="grid two">${r.people.map((p, i) => `
-      <div class="card"><div class="card-head">${pbadge(p.id)}</div>
-        <div class="stat" style="padding:0"><div class="label">Balance after cards &amp; transfer, plus cash</div><div class="value"><span data-bind="people.${i}.net">${money(p.net)}</span>${byEntries(tx.inHand(p.id).total)}</div></div>
+    <div class="grid two">${r.people.map((p, i) => {
+      // Banks = usable balance minus the cards this person pays; compared with Online from the entries
+      const h = tx.inHand(p.id);
+      const bankOk = hasEntries() && same(p.bankNet, h.online), cashOk = hasEntries() && same(p.cash, h.cash);
+      return `
+      <div class="card ${bankOk && cashOk ? 'match' : ''}"><div class="card-head">${pbadge(p.id)}</div>
+        <div class="stat" style="padding:0"><div class="label">Banks after cards, plus cash</div><div class="value"><span data-bind="people.${i}.net">${money(p.net)}</span>${vsEntries(p.net, h.total)}</div></div>
         <div class="list" style="margin-top:8px">
-          <div class="row between small" style="padding:6px 0"><span>Banks (usable)</span><span><span class="num" data-bind="people.${i}.usableTotal">${money(p.usableTotal)}</span>${byEntries(tx.inHand(p.id).online)}</span></div>
-          <div class="row between small" style="padding:6px 0"><span>Cash</span><span><span class="num" data-bind="people.${i}.cash">${money(p.cash)}</span>${byEntries(tx.inHand(p.id).cash)}</span></div>
-          <div class="row between small" style="padding:6px 0"><span>Cards to pay</span><span class="num expense" data-bind="people.${i}.ccToPay">${money(p.ccToPay)}</span></div>
-          ${p.transfer ? `<div class="row between small" style="padding:6px 0"><span>Transfer deducted</span><span class="num expense">${money(p.transfer)}</span></div>` : ''}
-        </div></div>`).join('')}</div>
+          <div class="row between small ${bankOk ? 'match' : ''}" style="padding:6px 0"><span>Banks</span><span><span class="num" data-bind="people.${i}.bankNet">${money(p.bankNet)}</span>${vsEntries(p.bankNet, h.online)}</span></div>
+          <div class="row between small ${cashOk ? 'match' : ''}" style="padding:6px 0"><span>Cash</span><span><span class="num" data-bind="people.${i}.cash">${money(p.cash)}</span>${vsEntries(p.cash, h.cash)}</span></div>
+        </div></div>`;
+    }).join('')}</div>
     <div class="card"><div class="row between"><b>Total (VJ + MM)</b><span><b class="num" data-bind="total">${money(r.total)}</b>${byEntries(tx.inHandAll())}</span></div></div>
     ${entriesNote()}
 
