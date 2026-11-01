@@ -9,7 +9,7 @@ import * as recurring from './recurring.js';
 import * as sync from './sync.js';
 import * as hubfile from './hubfile.js';
 import * as lock from './lock.js';
-import { $, consumeSlide, applyTheme, toast, pickFiles, promptDialog, pickDialog, destroyCharts, sheet, shareOrDownload } from './ui/components.js';
+import { $, consumeSlide, applyTheme, installCalc, toast, pickFiles, promptDialog, pickDialog, destroyCharts, sheet, shareOrDownload } from './ui/components.js';
 import { memberRoutes, memberNav } from './ui/member-screens.js';
 import { hubRoutes, hubNav } from './ui/hub-screens.js';
 
@@ -26,6 +26,7 @@ async function main() {
     return;
   }
   applyTheme();
+  installCalc();
   registerServiceWorker();
   setupInstall();
 

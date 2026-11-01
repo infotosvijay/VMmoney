@@ -9,7 +9,7 @@ import * as budgets from '../budgets.js';
 import * as recurring from '../recurring.js';
 import * as lock from '../lock.js';
 import * as csv from '../csvimport.js';
-import { onSwipe, $, $$, money, toast, pickFiles, sheet, confirmDialog, promptDialog, pickDialog, empty, progress, applyTheme, relTime } from './components.js';
+import { onSwipe, $, $$, money, toast, pickFiles, sheet, confirmDialog, promptDialog, pickDialog, empty, progress, applyTheme, relTime, evalAmount } from './components.js';
 
 const VERSION = self.APP_VERSION || 'dev';
 const fmem = () => familyMember(cfg.memberId);
@@ -177,7 +177,7 @@ function budgetSheet(existing, { hub }, ctx) {
       <label class="field" id="memwrap"><span>Member</span><select name="member">${members.map((m) => `<option value="${esc(m.id)}" ${m.id === cur.memberId ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></label>` : ''}
     <label class="field"><span>Category</span><select name="cat" required><option value="">Choose…</option>${tree.map((x) => `<option value="${esc(x.cat.id)}" ${x.cat.id === cur.categoryId ? 'selected' : ''}>${esc(x.cat.icon)} ${esc(x.cat.name)}</option>`).join('')}</select></label>
     <label class="field"><span>Subcategory (optional)</span><select name="sub"></select></label>
-    <label class="field"><span>Monthly limit (${esc(cfg.currency || 'INR')})</span><input name="limit" type="number" inputmode="decimal" min="1" step="any" value="${esc(cur.limit)}" required></label>
+    <label class="field"><span>Monthly limit (${esc(cfg.currency || 'INR')})</span><input name="limit" type="text" inputmode="decimal" data-calc autocomplete="off" value="${esc(cur.limit)}" required></label>
     <div class="row end"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary">Save</button></div></form>`);
   const f = $('form', s.el);
   const fillSubs = () => {
@@ -191,9 +191,11 @@ function budgetSheet(existing, { hub }, ctx) {
   if (f.scope) { f.scope.onchange = toggleMem; toggleMem(); }
   f.onsubmit = async (e) => {
     e.preventDefault();
+    const limit = Math.round(evalAmount(f.limit.value) * 100) / 100;
+    if (!(limit > 0)) { toast('Enter a monthly limit greater than zero.'); f.limit.focus(); return; }
     await budgets.save({
       id: existing?.id, scope: f.scope ? f.scope.value : 'member', memberId: f.member ? f.member.value : cfg.memberId,
-      categoryId: f.cat.value, subcategoryId: f.sub.value, limit: f.limit.value,
+      categoryId: f.cat.value, subcategoryId: f.sub.value, limit,
     });
     s.close(); ctx.refresh();
   };

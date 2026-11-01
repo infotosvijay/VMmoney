@@ -52,9 +52,17 @@ export function confirmDialog(message, { okText = 'OK', danger = false, title = 
 export function promptDialog({ title, label, value = '', type = 'text', okText = 'Save', help = '' }) {
   return new Promise((resolve) => {
     let result = null;
-    const s = sheet(title, `<form class="stack"><label class="field"><span>${esc(label)}</span><input name="v" type="${type}" value="${esc(value)}" autocomplete="off" ${type === 'number' ? 'inputmode="decimal" step="any"' : ''} required></label>${help ? `<p class="muted small">${esc(help)}</p>` : ''}<div class="row end"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary">${esc(okText)}</button></div></form>`, { onClose: () => resolve(result) });
+    const s = sheet(title, `<form class="stack"><label class="field"><span>${esc(label)}</span><input name="v" type="${type === 'number' ? 'text' : type}" value="${esc(value)}" autocomplete="off" ${type === 'number' ? 'inputmode="decimal" data-calc' : ''} required></label>${help ? `<p class="muted small">${esc(help)}</p>` : ''}<div class="row end"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary">${esc(okText)}</button></div></form>`, { onClose: () => resolve(result) });
     const form = s.el.querySelector('form');
-    form.onsubmit = (e) => { e.preventDefault(); result = form.v.value; s.close(); };
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      if (type === 'number') {
+        const n = evalAmount(form.v.value);
+        if (Number.isNaN(n)) { toast('Enter a number or a sum like 1200+350'); form.v.focus(); return; }
+        result = String(Math.round(n * 100) / 100);
+      } else result = form.v.value;
+      s.close();
+    };
     form.v.focus(); form.v.select?.();
   });
 }
@@ -229,4 +237,104 @@ export function onSwipe(el, handler, { min = 70 } = {}) {
     if (Date.now() - t0 > 700 || Math.abs(dx) < min || Math.abs(dy) > Math.abs(dx) * 0.6) return;
     if (handler(dx < 0 ? 'next' : 'prev', startEl) !== false) pendingSlide = dx < 0 ? 'left' : 'right';
   }, { passive: true });
+}
+
+// ---------------------------------------------------------------- calculator in amount boxes
+
+/** Evaluates a typed amount like "120+45.5*2" or "(300-20)/4" (+ − × ÷ and brackets). NaN if it is not valid. */
+export function evalAmount(input) {
+  const s = String(input).replace(/[,\s]/g, '').replace(/[×xX]/g, '*').replace(/÷/g, '/').replace(/[−–]/g, '-');
+  let i = 0;
+  const num = () => {
+    const m = /^\d*\.?\d+|^\d+\./.exec(s.slice(i));
+    if (!m) throw 0;
+    i += m[0].length;
+    return parseFloat(m[0]);
+  };
+  const factor = () => {
+    if (s[i] === '-') { i++; return -factor(); }
+    if (s[i] === '+') { i++; return factor(); }
+    if (s[i] === '(') { i++; const v = expr(); if (s[i++] !== ')') throw 0; return v; }
+    return num();
+  };
+  const term = () => {
+    let v = factor();
+    while (s[i] === '*' || s[i] === '/') v = s[i++] === '*' ? v * factor() : v / factor();
+    return v;
+  };
+  const expr = () => {
+    let v = term();
+    while (s[i] === '+' || s[i] === '-') v = s[i++] === '+' ? v + term() : v - term();
+    return v;
+  };
+  try {
+    const v = expr();
+    return i === s.length && Number.isFinite(v) ? v : NaN;
+  } catch { return NaN; }
+}
+export const hasMath = (s) => /\d\s*[-+*/×xX÷−–]|^\s*\(/.test(String(s));
+
+const roundAmt = (v) => String(Math.round(v * 100) / 100);
+
+/**
+ * Any <input data-calc> gets a bar above the keyboard with + − × ÷ ( ) = and the running result,
+ * since a phone's number keyboard often has no operator keys. Leaving the box replaces the sum with its result.
+ * Call once at start-up; it works for inputs drawn later too.
+ */
+export function installCalc() {
+  const bar = document.createElement('div');
+  bar.className = 'calc-bar';
+  bar.hidden = true;
+  bar.innerHTML = `${['+', '−', '×', '÷', '(', ')'].map((k) => `<button type="button" data-k="${k}">${k}</button>`).join('')}<button type="button" data-k="=">=</button><span class="calc-out num" aria-live="polite"></span>`;
+  const out = bar.querySelector('.calc-out');
+  let cur = null;
+
+  const place = () => {
+    const vv = window.visualViewport;
+    bar.style.bottom = vv ? `${Math.max(0, window.innerHeight - vv.height - vv.offsetTop)}px` : '0px';
+  };
+  const preview = () => {
+    if (!cur) return;
+    const v = evalAmount(cur.value);
+    out.textContent = hasMath(cur.value) ? (Number.isNaN(v) ? '= …' : `= ${money(Number(roundAmt(v)))}`) : '';
+  };
+  const settle = (el) => {
+    const v = evalAmount(el.value);
+    if (hasMath(el.value) && !Number.isNaN(v)) { el.value = roundAmt(v); el.dispatchEvent(new Event('input', { bubbles: true })); }
+  };
+
+  // keep the focus (and the keyboard) in the amount box while tapping the bar
+  bar.addEventListener('pointerdown', (e) => e.preventDefault());
+  bar.addEventListener('mousedown', (e) => e.preventDefault());
+  bar.addEventListener('click', (e) => {
+    const k = e.target.closest('[data-k]')?.dataset.k;
+    if (!k || !cur) return;
+    if (k === '=') settle(cur);
+    else {
+      const ch = { '−': '-', '×': '*', '÷': '/' }[k] || k;
+      const a = cur.selectionStart ?? cur.value.length, b = cur.selectionEnd ?? a;
+      cur.setRangeText(ch, a, b, 'end');
+      cur.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    preview();
+  });
+
+  document.addEventListener('focusin', (e) => {
+    const el = e.target;
+    if (!el.matches?.('input[data-calc]')) return;
+    cur = el;
+    (el.closest('dialog') || document.body).appendChild(bar); // a modal sheet makes the page behind it untappable
+    bar.hidden = false;
+    place();
+    preview();
+  });
+  document.addEventListener('focusout', (e) => {
+    if (e.target !== cur) return;
+    settle(cur);
+    cur = null;
+    bar.hidden = true;
+  });
+  document.addEventListener('input', (e) => { if (e.target === cur) preview(); });
+  window.visualViewport?.addEventListener('resize', place);
+  window.visualViewport?.addEventListener('scroll', place);
 }

@@ -351,3 +351,18 @@ html, body { overscroll-behavior-x: none; }
 /* Categories: fold arrow on each main category (tap the name to show / hide its subcategories) */
 .fold { display: inline-block; font-size: .75em; color: var(--muted); transition: transform .15s; }
 [aria-expanded="true"] .fold { transform: rotate(90deg); }
+
+/* ---------- calculator bar above the keyboard (inputs with data-calc) ---------- */
+.calc-bar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 90; display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); background: var(--card); border-top: 1px solid var(--line);
+  box-shadow: 0 -4px 14px rgba(0,0,0,.12);
+}
+.calc-bar[hidden] { display: none; }
+.calc-bar button {
+  flex: 1 1 0; min-width: 0; max-width: 64px; height: 42px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text);
+  font-size: 1.2rem; font-weight: 650; cursor: pointer; touch-action: manipulation;
+}
+.calc-bar button[data-k="="] { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
+.calc-bar .calc-out { order: -1; flex-basis: 100%; text-align: right; padding: 0 4px; font-weight: 650; color: var(--brand); }
+.calc-bar .calc-out:empty { display: none; }

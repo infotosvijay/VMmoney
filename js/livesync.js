@@ -13,7 +13,7 @@ import * as sync from './sync.js';
 
 const PREFIX = 'fmm-vm-';
 const QR_TAG = 'VMM1';
-const PROTO = 2; // 2: QR key, roles, phone <-> phone
+const PROTO = 3; // 2: QR key, roles, phone <-> phone. 3: data sent as JSON text
 const HOST_TTL_MS = 10 * 60 * 1000;
 const STEP_TIMEOUT_MS = 90 * 1000;
 
@@ -110,7 +110,7 @@ export async function hostSession(ui) {
     const inbox = makeInbox(conn);
     const hello = await inbox.next('hello', STEP_TIMEOUT_MS);
     const name = hello.name || 'A phone';
-    if (!isHub && (hello.proto || 0) < PROTO) return deny(conn, 'update');
+    if ((hello.proto || 0) < PROTO) return deny(conn, 'update');
     if (!isHub && hello.memberId === cfg.memberId) return deny(conn, 'same');
     // a scanned QR carries the key; a typed code needs a tap on "Allow"
     if (!(key && hello.key === key)) {
@@ -139,7 +139,7 @@ export async function hostSession(ui) {
     let preview = sync.previewMemberPackage(pkg);
     if (preview.gap && !pkg.full) {
       // changes since a send this laptop never received: ask for everything instead
-      conn.send({ t: 'need-full' });
+      post(conn, { t: 'need-full' });
       ui.status('Asking the phone for a full copy…', 'work');
       msg = await inbox.next('member', STEP_TIMEOUT_MS);
       pkg = await sync.validatePackage(msg.pkg, 'Phone data');
@@ -152,7 +152,7 @@ export async function hostSession(ui) {
     const fam = await sync.buildFamilyPackage({ includeSummary: true, ownFor: pkg.fromMemberId, since: pkg.full ? null : pkg.since, entries: true, entriesExcept: pkg.fromMemberId,
       justReceived: Object.fromEntries(['transactions', 'accounts', 'recurring'].map((k) => [k, sentKeys(k)])),
     });
-    conn.send({ t: 'family', pkg: fam.pkg, applied });
+    post(conn, { t: 'family', pkg: fam.pkg, applied });
     await inbox.next('done', STEP_TIMEOUT_MS).catch(() => {});
     ui.status(`Synced with ${preview.name}: ${applied} records received, family update sent.`, 'done');
     ui.done?.({ peer: 'hub', name: preview.name, got: applied });
@@ -199,6 +199,7 @@ export async function join(pairing, onStatus = () => {}) {
           conn.send({ t: 'hello', memberId: cfg.memberId, name: cfg.memberName, key: pairing.key || '', proto: PROTO });
           const reply = await inbox.next(['ready', 'denied'], STEP_TIMEOUT_MS);
           if (reply.t === 'denied') throw new Error(DENY_TEXT[reply.reason] || DENY_TEXT.user);
+          if ((reply.proto || 0) < PROTO) throw new Error(DENY_TEXT.update);
           let result;
           if (reply.role === 'member') {
             if (reply.memberId === cfg.memberId) throw new Error(DENY_TEXT.same);
@@ -219,14 +220,14 @@ export async function join(pairing, onStatus = () => {}) {
 async function hubExchange(conn, inbox, onStatus) {
   onStatus('Sending my changes…');
   let built = await sync.buildMemberPackage({ full: false });
-  conn.send({ t: 'member', pkg: built.pkg });
+  post(conn, { t: 'member', pkg: built.pkg });
   // the hub either answers with the family update, or first asks for a full copy
   const answer = await inbox.next(['family', 'need-full'], STEP_TIMEOUT_MS);
   let famMsg = answer;
   if (answer.t === 'need-full') {
     onStatus('Sending a full copy…');
     built = await sync.buildMemberPackage({ full: true });
-    conn.send({ t: 'member', pkg: built.pkg });
+    post(conn, { t: 'member', pkg: built.pkg });
     famMsg = await inbox.next('family', STEP_TIMEOUT_MS);
   }
   onStatus('Applying the family update…');
@@ -234,7 +235,7 @@ async function hubExchange(conn, inbox, onStatus) {
   fam.fileName = 'live sync';
   await sync.applyFamilyPackage(sync.previewFamilyPackage(fam));
   await sync.commitExport({ fileName: 'live sync', count: built.count, createdAt: built.pkg.createdAt });
-  conn.send({ t: 'done' });
+  post(conn, { t: 'done' });
   const restored = (fam.records.own?.transactions || []).filter((t) => !t.deleted).length;
   return { peer: 'hub', sent: built.count, restored };
 }
@@ -242,29 +243,37 @@ async function hubExchange(conn, inbox, onStatus) {
 /** Both phones run this: swap version lists, send what the other lacks, apply what arrives. */
 async function peerExchange(conn, inbox, other, onStatus, onApplied = () => {}) {
   onStatus(`Comparing with ${other.name}'s phone…`);
-  conn.send({ t: 'have', have: sync.peerManifest() });
+  post(conn, { t: 'have', have: sync.peerManifest() });
   const theirs = await inbox.next('have', STEP_TIMEOUT_MS);
   const out = await sync.buildPeerPackage(other.memberId, theirs.have);
   onStatus('Swapping changes…');
-  conn.send({ t: 'peer', pkg: out.pkg });
+  post(conn, { t: 'peer', pkg: out.pkg });
   const msg = await inbox.next('peer', STEP_TIMEOUT_MS);
   const pkg = await sync.validatePackage(msg.pkg, 'Phone data');
   if (pkg.packageType !== 'peer' || pkg.fromMemberId !== other.memberId) throw new Error('Unexpected data from the other phone');
   pkg.fileName = `phone sync with ${other.name}`;
   const got = await sync.applyPeerPackage(sync.previewPeerPackage(pkg));
   onApplied();
-  conn.send({ t: 'done' });
+  post(conn, { t: 'done' });
   await inbox.next('done', STEP_TIMEOUT_MS).catch(() => {});
   return { name: other.name, sent: out.count, got };
 }
 
 // ---------------------------------------------------------------- helpers
 
+/**
+ * Sends data as one JSON string. PeerJS packs objects and arrays one call deeper per key/item, so a
+ * manifest or package with thousands of records overflows the stack ("Maximum call stack size exceeded").
+ * The small hello/ready/denied messages stay plain objects so older app versions can still read them.
+ */
+const post = (conn, msg) => conn.send(JSON.stringify(msg));
+
 /** Tiny async message queue: await inbox.next('type'). Messages arriving early are kept. */
 function makeInbox(conn) {
   const queue = [];
   const waiters = [];
   conn.on('data', (msg) => {
+    if (typeof msg === 'string') { try { msg = JSON.parse(msg); } catch { return; } }
     const i = waiters.findIndex((w) => w.ts.includes(msg?.t));
     if (i >= 0) { const [w] = waiters.splice(i, 1); clearTimeout(w.timer); w.res(msg); } else queue.push(msg);
   });

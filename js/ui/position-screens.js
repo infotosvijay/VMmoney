@@ -5,7 +5,7 @@ import { cfg } from '../db.js';
 import { esc, FAMILY, otherMember, localDate } from '../models.js';
 import * as H from '../holdings.js';
 import * as tx from '../transactions.js';
-import { onSwipe, $, $$, money, toast, confirmDialog, pickDialog, pickFiles, shareOrDownload, download, empty } from './components.js';
+import { onSwipe, $, $$, money, evalAmount, hasMath, toast, confirmDialog, pickDialog, pickFiles, shareOrDownload, download, empty } from './components.js';
 
 const person = (id) => FAMILY.find((f) => f.id === id) || { id, name: '?', color: '#64748b' };
 const pbadge = (id) => { const p = person(id); return `<span class="pbadge" style="--c:${esc(p.color)}">${esc(p.name)}</span>`; };
@@ -13,8 +13,8 @@ const pbadge = (id) => { const p = person(id); return `<span class="pbadge" styl
 const plain = (n) => (n == null ? '' : Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 }));
 const toNum = (v) => {
   if (v === '' || v == null) return null;
-  const n = Number(String(v).replace(/,/g, ''));
-  return Number.isFinite(n) ? n : null;
+  const n = evalAmount(v); // also works out sums like "1200+350"
+  return Number.isNaN(n) ? null : Math.round(n * 100) / 100;
 };
 function sanitize(v) {
   v = v.replace(/[^\d.]/g, '');
@@ -25,7 +25,7 @@ function sanitize(v) {
   return v.slice(0, 13);
 }
 const moneyInput = (field, id, val, label, extra = '') => `<label class="money"><span class="vh">${esc(label)}</span><span class="cur">₹</span>
-  <input class="money-in" type="text" inputmode="decimal" autocomplete="off" placeholder="0" data-f="${field}" ${id ? `data-id="${esc(id)}"` : ''} value="${plain(val)}" ${extra}></label>`;
+  <input class="money-in" type="text" inputmode="decimal" data-calc autocomplete="off" placeholder="0" data-f="${field}" ${id ? `data-id="${esc(id)}"` : ''} value="${plain(val)}" ${extra}></label>`;
 
 // The balance your entries say (Online + Cash from the transactions), shown in brackets beside what the banks / cash really hold.
 const hasEntries = () => db.live('transactions').length > 0;
@@ -97,7 +97,7 @@ function refreshBindings(root) {
 function wireMoneyInputs(root) {
   root.addEventListener('input', (e) => {
     const el = e.target;
-    if (!el.classList.contains('money-in')) return;
+    if (!el.classList.contains('money-in') || hasMath(el.value)) return; // leave sums for the calculator
     const caret = el.selectionStart ?? el.value.length;
     const before = sanitize(el.value.slice(0, caret)).length;
     const clean = sanitize(el.value);
