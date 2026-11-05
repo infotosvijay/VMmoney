@@ -173,10 +173,10 @@ export async function entryScreen(root, ctx) {
         <label class="field"><span>Amount (${esc(cfg.currency || 'INR')})</span>
           <input id="amount" class="amount-input" inputmode="decimal" data-calc autocomplete="off" placeholder="0" value="${esc(st.amount)}">
         </label>
-        ${existing || isT ? '' : `<label class="field"><span>Repeat</span>
-          <select id="repeat"><option value="">Does not repeat</option>${FREQUENCIES.map(([v, l]) => `<option value="${v}" ${v === st.repeat ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`}
         <label class="field"><span>Note</span><input id="note" maxlength="200" value="${esc(st.note)}" placeholder="What was it for?" list="note-list" autocomplete="off"></label>
         <datalist id="note-list">${noteOptions}</datalist>
+        ${existing || isT ? '' : `<label class="field"><span>Repeat</span>
+          <select id="repeat"><option value="">Does not repeat</option>${FREQUENCIES.map(([v, l]) => `<option value="${v}" ${v === st.repeat ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`}
         <p id="err" class="danger-text small" role="alert"></p>
         <div class="row">
           <button class="btn primary grow" data-save>${existing ? 'Save changes' : 'Save'}</button>
