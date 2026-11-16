@@ -256,6 +256,10 @@ dialog.sheet::backdrop { background: rgba(0,0,0,.45); }
   .card { box-shadow: none; break-inside: avoid; }
   #main-col { padding: 0; }
   .chart-box { height: 220px; }
+  .print-title { display: block; }
+  .print-only { display: block; break-before: page; }
+  .print-only .tbl th { position: static; }
+  .print-only tr { break-inside: avoid; }
 }
 
 /* ---------- Balances ---------- */
@@ -371,3 +375,17 @@ html, body { overscroll-behavior-x: none; }
 .calc-bar button[data-k="="] { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
 .calc-bar .calc-out { order: -1; flex-basis: 100%; text-align: right; padding: 0 4px; font-weight: 650; color: var(--brand); }
 .calc-bar .calc-out:empty { display: none; }
+
+/* v1.19 filters */
+.active-chips:empty { display: none; }
+.active-chips { margin: 8px 0; }
+.chip-x { border: 1px solid var(--brand); background: var(--brand-soft); color: var(--text); border-radius: 99px; padding: 5px 10px; font-size: .84rem; }
+.chip-x span { color: var(--muted); margin-left: 2px; }
+.chip-x:hover span, .chip-x:focus-visible span { color: var(--danger); }
+.day-head button.day-label { border: 0; background: none; padding: 2px 0; font: inherit; color: inherit; font-weight: 600; text-decoration: underline dotted; text-underline-offset: 3px; }
+.day-head .day-plus { text-decoration: none; }
+.day-head .day-plus:hover .day-add, .day-head .day-plus:focus-visible .day-add { filter: brightness(1.15); }
+.chips button[aria-pressed="true"] { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
+
+/* v1.21 reports */
+.print-title, .print-only { display: none; }

@@ -3,7 +3,7 @@
 
 import * as db from './db.js';
 import { cfg } from './db.js';
-import { base, thisMonth } from './models.js';
+import { base, thisMonth, fmtMoney } from './models.js';
 import * as cats from './categories.js';
 
 export const list = () => db.live('budgets');
@@ -50,3 +50,28 @@ export function budgetLabel(b) {
 }
 
 export const alerts = (opts) => statuses(opts).filter((s) => s.level !== 'ok');
+
+// ---- alerts when an entry pushes a budget over a line ----
+
+const RANK = { ok: 0, warn: 1, over: 2 };
+
+/** Each budget's level right now, to compare against after an entry is saved. */
+export const snapshot = (opts = { memberOnly: true }) => new Map(statuses(opts).map((s) => [s.budget.id, s.level]));
+
+/** Messages for budgets that got worse since `before` (ok -> 80%+, or 80%+ -> over). Most serious first. */
+export function crossings(before, opts = { memberOnly: true }) {
+  return statuses(opts)
+    .filter((s) => RANK[s.level] > RANK[before.get(s.budget.id) || 'ok'])
+    .sort((a, b) => RANK[b.level] - RANK[a.level])
+    .map((s) => (s.level === 'over'
+      ? `${s.label}: over budget by ${fmtMoney(s.used - s.budget.limit, cfg.currency || 'INR')}`
+      : `${s.label}: ${Math.round(s.pct)}% of budget used`));
+}
+
+/** What is left of a budget this month, and what that allows per day for the days remaining (today included). */
+export function pace(status, now = new Date()) {
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const daysLeft = daysInMonth - now.getDate() + 1;
+  const left = status.budget.limit - status.used;
+  return { left, daysLeft, perDay: left > 0 ? left / daysLeft : 0 };
+}

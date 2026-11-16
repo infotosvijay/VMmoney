@@ -6,7 +6,7 @@ import { esc, addMonths, monthRange, monthLabel } from '../models.js';
 import * as cats from '../categories.js';
 import * as tx from '../transactions.js';
 import { $, money, drawChart, empty } from './components.js';
-import { groupedList, viewOf, whoSeg } from './shared-screens.js';
+import { groupedList, viewOf, whoSeg } from './rows.js';
 
 export const categoryTitle = (ctx) => {
   const c = ctx.params.get('c');

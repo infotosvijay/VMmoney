@@ -156,6 +156,7 @@ export async function budgetsScreen(root, ctx, { hub = false } = {}) {
         ${progress(s.pct, s.level)}
         <div class="row between small" style="margin-top:6px"><span class="num ${s.level === 'over' ? 'danger-text' : ''}">${money(s.used)} of ${money(s.budget.limit)} (${Math.round(s.pct)}%)</span>
           ${editable(s.budget) ? `<span class="row"><button class="btn small" data-edit="${esc(s.budget.id)}">Edit</button><button class="btn small" data-del="${esc(s.budget.id)}">Delete</button></span>` : ''}</div>
+        <p class="muted small" style="margin:4px 0 0">${paceText(s)}</p>
         ${s.partial ? '<p class="muted small">Showing only your own spending. The Hub\'s next family package (with summary) gives the full family figure.</p>' : ''}
       </div>`).join('') : empty('No budgets yet.', hub ? 'Set monthly limits for the family or for each member.' : 'Add a monthly limit for a category you want to watch.')}`;
 
@@ -166,6 +167,12 @@ export async function budgetsScreen(root, ctx, { hub = false } = {}) {
     else if (b.dataset.edit) budgetSheet(db.get('budgets', b.dataset.edit), { hub }, ctx);
     else if (b.dataset.del && (await confirmDialog('Delete this budget?', { okText: 'Delete', danger: true }))) { await budgets.remove(b.dataset.del); ctx.refresh(); }
   };
+}
+
+function paceText(s) {
+  const p = budgets.pace(s);
+  if (p.left <= 0) return `Over by ${money(-p.left)}. ${p.daysLeft} day${p.daysLeft === 1 ? '' : 's'} left this month.`;
+  return `${money(p.left)} left · about ${money(Math.floor(p.perDay))} a day for the next ${p.daysLeft} day${p.daysLeft === 1 ? '' : 's'}`;
 }
 
 function budgetSheet(existing, { hub }, ctx) {
@@ -227,13 +234,54 @@ export async function recurringScreen(root, ctx) {
   const items = recurring.list();
   root.innerHTML = `<p class="muted small">Recurring entries are created when due. Add one from the Add Entry screen using “Repeat”.</p>
     ${items.length ? `<div class="card list" style="padding:0 12px">${items.map((r) => `<div class="list-item"><span class="avatar">🔁</span>
-      <span class="main"><span class="title">${esc(cats.pathLabel(r.template))} · ${money(r.template.amount)}</span><span class="sub">${esc(labelOf(FREQUENCIES, r.frequency))} · next ${esc(r.nextDate)}${r.active ? '' : ' · paused'}${r.template.note ? ' · ' + esc(r.template.note) : ''}</span></span>
-      <span class="row" style="flex-wrap:nowrap"><button class="btn small" data-toggle="${esc(r.id)}">${r.active ? 'Pause' : 'Resume'}</button><button class="btn small" data-del="${esc(r.id)}">Delete</button></span></div>`).join('')}</div>` : empty('Nothing repeats yet.')}`;
+      <span class="main"><span class="title">${esc(cats.pathLabel(r.template))} · ${money(r.template.amount)}</span><span class="sub">${esc(labelOf(FREQUENCIES, r.frequency))} · ${recurring.hasEnded(r) ? 'ended' : 'next ' + esc(r.nextDate)}${r.endDate && !recurring.hasEnded(r) ? ' · ends ' + esc(r.endDate) : ''}${r.active || recurring.hasEnded(r) ? '' : ' · paused'}${r.template.note ? ' · ' + esc(r.template.note) : ''}</span></span>
+      <span class="row" style="flex-wrap:wrap;justify-content:flex-end"><button class="btn small" data-edit="${esc(r.id)}">Edit</button>${recurring.hasEnded(r) ? '' : `<button class="btn small" data-skip="${esc(r.id)}" title="Skip the next one">Skip next</button><button class="btn small" data-toggle="${esc(r.id)}">${r.active ? 'Pause' : 'Resume'}</button>`}<button class="btn small" data-del="${esc(r.id)}">Delete</button></span></div>`).join('')}</div>` : empty('Nothing repeats yet.')}`;
   root.onclick = async (e) => {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.dataset.toggle) { const r = db.get('recurring', b.dataset.toggle); await recurring.setActive(r.id, !r.active); ctx.refresh(); }
+    else if (b.dataset.edit) recurringSheet(db.get('recurring', b.dataset.edit), ctx);
+    else if (b.dataset.skip) {
+      const r = db.get('recurring', b.dataset.skip);
+      if (await confirmDialog(`Skip the ${r.nextDate} entry? Nothing is created for that date and the next one stays as scheduled after it.`, { okText: 'Skip it' })) { await recurring.skipNext(r.id); toast('Skipped'); ctx.refresh(); }
+    }
     else if (b.dataset.del && (await confirmDialog('Stop and delete this recurring entry? Past entries stay.', { okText: 'Delete', danger: true }))) { await recurring.remove(b.dataset.del); ctx.refresh(); }
+  };
+}
+
+function recurringSheet(r, ctx) {
+  const isT = r.template.type === 'transfer';
+  const tree = isT ? [] : cats.tree(r.template.type || 'expense');
+  const t = r.template;
+  const s = sheet('Edit recurring entry', `<form class="stack">
+    ${isT ? '' : `<label class="field"><span>Category</span><select name="cat" required>${tree.map((x) => `<option value="${esc(x.cat.id)}" ${x.cat.id === t.categoryId ? 'selected' : ''}>${esc(x.cat.icon)} ${esc(x.cat.name)}</option>`).join('')}</select></label>
+    <label class="field"><span>Subcategory (optional)</span><select name="sub"></select></label>`}
+    <label class="field"><span>Amount (${esc(cfg.currency || 'INR')})</span><input name="amount" type="text" inputmode="decimal" data-calc autocomplete="off" value="${esc(t.amount)}" required></label>
+    <label class="field"><span>Note</span><input name="note" maxlength="200" value="${esc(t.note || '')}"></label>
+    <label class="field"><span>Repeats</span><select name="freq">${FREQUENCIES.map(([v, l]) => `<option value="${v}" ${v === r.frequency ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    <label class="field"><span>Next date</span><input name="next" type="date" value="${esc(r.nextDate)}" required></label>
+    <label class="field"><span>Ends on (optional)</span><input name="end" type="date" value="${esc(r.endDate || '')}"></label>
+    <p class="muted small">Entries already created are not changed.</p>
+    <div class="row end"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary">Save</button></div></form>`);
+  const f = $('form', s.el);
+  if (f.cat) {
+    const fillSubs = () => {
+      const subs = tree.find((x) => x.cat.id === f.cat.value)?.subs || [];
+      f.sub.innerHTML = '<option value="">None</option>' + subs.map((x) => `<option value="${esc(x.id)}" ${x.id === t.subcategoryId ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
+    };
+    fillSubs();
+    f.cat.onchange = () => { t.subcategoryId = ''; fillSubs(); };
+  }
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    const amount = Math.round(evalAmount(f.amount.value) * 100) / 100;
+    if (!(amount > 0)) { toast('Enter an amount greater than zero.'); f.amount.focus(); return; }
+    if (f.end.value && f.end.value < f.next.value) { toast('The end date is before the next date.'); return; }
+    await recurring.edit(r.id, {
+      amount, note: f.note.value.trim(), frequency: f.freq.value, nextDate: f.next.value, endDate: f.end.value,
+      ...(f.cat ? { categoryId: f.cat.value, subcategoryId: f.sub.value || null } : {}),
+    });
+    s.close(); toast('Saved'); ctx.refresh();
   };
 }
 

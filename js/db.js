@@ -7,8 +7,10 @@ const DB_NAME = 'family-money-manager';
 const DB_VERSION = 2;
 export const DATA_STORES = ['members', 'accounts', 'categories', 'transactions', 'budgets', 'recurring', 'holdings', 'syncLog'];
 
-let idb;
+let idb; // undefined in memory mode (tests)
 const mem = {};
+let dataVersion = 0; // bumps on every write, so derived data can be cached until something changes
+export const version = () => dataVersion;
 export const cfg = {}; // settings, mirrored in memory
 const listeners = new Set();
 
@@ -27,7 +29,11 @@ function open() {
       } else if (old < 2) {
         d.createObjectStore('holdings', { keyPath: 'id' }); // v2: Balances (banks, cash, cards)
       }
-      // Future versions: `if (old < 2) { add stores / backfill defaults only }`
+      // Future versions: `if (old < 3) { add stores / backfill defaults only }`
+      // Keep a record of every upgrade that ran on this device (visible in cfg.dbMigrations).
+      const st = r.transaction.objectStore('settings');
+      const prev = st.get('dbMigrations');
+      prev.onsuccess = () => st.put({ key: 'dbMigrations', value: [...(prev.result?.value || []), { from: old, to: DB_VERSION, at: nowISO() }] });
     };
     r.onsuccess = () => resolve(r.result);
     r.onerror = () => reject(r.error);
@@ -48,23 +54,45 @@ export async function init() {
   (await req(store('settings').getAll())).forEach((r) => { cfg[r.key] = r.value; });
 }
 
+/** Memory-only database with no IndexedDB, for tests. */
+export function initMemory() {
+  idb = undefined;
+  for (const s of DATA_STORES) mem[s] = new Map();
+  Object.keys(cfg).forEach((k) => delete cfg[k]);
+  dataVersion++;
+}
+
 export const all = (s) => [...mem[s].values()];
 export const live = (s) => all(s).filter((r) => !r.deleted);
 export const get = (s, id) => mem[s].get(id);
 
+// Storage first, memory second: if the write fails (quota, blocked) the screen never shows data that isn't saved.
 export async function put(s, rec, { silent = false } = {}) {
+  if (idb) await req(store(s, 'readwrite').put(rec));
   mem[s].set(rec.id, rec);
-  await req(store(s, 'readwrite').put(rec));
+  dataVersion++;
   if (!silent) notify(s);
   return rec;
 }
 
 export async function putMany(s, recs, { silent = false } = {}) {
   if (!recs.length) return;
-  const t = idb.transaction(s, 'readwrite');
-  recs.forEach((r) => { mem[s].set(r.id, r); t.objectStore(s).put(r); });
-  await done(t);
+  if (idb) {
+    const t = idb.transaction(s, 'readwrite');
+    recs.forEach((r) => t.objectStore(s).put(r));
+    await done(t);
+  }
+  recs.forEach((r) => mem[s].set(r.id, r));
+  dataVersion++;
   if (!silent) notify(s);
+}
+
+/** Apply one patch to many records in a single write and a single screen refresh. */
+export async function updateMany(s, ids, patch) {
+  const at = nowISO();
+  const recs = ids.map((id) => mem[s].get(id)).filter(Boolean).map((cur) => ({ ...cur, ...patch, updatedAt: at }));
+  await putMany(s, recs);
+  return recs;
 }
 
 /** Merge a patch into a record and bump updatedAt (so the change syncs). */
@@ -75,8 +103,9 @@ export async function update(s, id, patch) {
 }
 
 export async function clearStore(s) {
+  if (idb) await req(store(s, 'readwrite').clear());
   mem[s].clear();
-  await req(store(s, 'readwrite').clear());
+  dataVersion++;
   notify(s);
 }
 
@@ -96,6 +125,7 @@ export async function delCfg(key) {
 export async function wipeAll() {
   for (const s of [...DATA_STORES, 'settings']) await req(store(s, 'readwrite').clear());
   DATA_STORES.forEach((s) => mem[s].clear());
+  dataVersion++;
   Object.keys(cfg).forEach((k) => delete cfg[k]);
 }
 

@@ -55,8 +55,30 @@ export function byMember(list) {
   return [...map.values()].sort((a, b) => b.expense - a.expense);
 }
 
-const csvCell = (v) => {
-  const s = String(v ?? '');
+/** Percent change from `before` to `now`, or null when there is nothing to compare with. */
+export const change = (now, before) => (before ? Math.round(((now - before) / Math.abs(before)) * 100) : null);
+
+/** The most spent-on (or earned-from) notes. The same words in any capitalisation count together. */
+export function topNotes(list, type = 'expense', n = 5) {
+  const map = new Map();
+  for (const t of list) {
+    const text = (t.note || '').trim();
+    if (t.type !== type || !text) continue;
+    const key = text.toLowerCase();
+    const e = map.get(key) || { note: text, total: 0, count: 0 };
+    e.total += t.amount; e.count++;
+    map.set(key, e);
+  }
+  return [...map.values()].sort((a, b) => b.total - a.total).slice(0, n);
+}
+
+/** Entries oldest first, for the printed statement. */
+export const statementRows = (list) => [...list].sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0));
+
+/** Text starting with = + - @ would run as a formula when the CSV is opened in Excel, so it is made plain text. */
+export const csvCell = (v) => {
+  let s = String(v ?? '');
+  if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 

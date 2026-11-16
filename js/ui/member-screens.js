@@ -11,9 +11,13 @@ import * as sync from '../sync.js';
 import * as live from '../livesync.js';
 import { qrSvg, scanQR } from './qr.js';
 import { onSwipe, installBanner, syncReminder, $, money, toast, confirmDialog, promptDialog, pickFiles, shareOrDownload, empty, progress, relTime, daysSince, sheet, monthTitle, pickMonth } from './components.js';
-import { txRow, entryScreen, transactionsScreen, reportsScreen } from './shared-screens.js';
+import { txRow } from './rows.js';
+import { entryScreen } from './entry-screen.js';
+import { transactionsScreen } from './transactions-screen.js';
+import { reportsScreen } from './reports-screen.js';
 import { positionScreen, positionCard } from './position-screens.js';
 import { categoryDetailScreen, categoryTitle, categoryBack } from './stats-screens.js';
+import { goalsScreen } from './goals-screen.js';
 import { categoriesScreen, budgetsScreen, accountsScreen, recurringScreen, settingsScreen } from './settings-screens.js';
 
 // ---------------------------------------------------------------- shared bits
@@ -291,6 +295,7 @@ export const memberRoutes = {
   position: { title: 'Balances', render: positionScreen },
   reports: { title: 'Reports', render: reportsScreen },
   category: { title: categoryTitle, render: categoryDetailScreen, back: categoryBack, navId: 'reports' },
+  goals: { title: 'Savings goals', render: goalsScreen },
   budgets: { title: 'Budgets', render: (r, c) => budgetsScreen(r, c, { hub: false }) },
   family: { title: 'Family view', render: familyScreen },
   sync: { title: 'Sync', render: syncScreen },
@@ -307,6 +312,7 @@ export const memberNav = [
   { id: 'position', ico: '🏦', label: 'Balances', tab: true },
   { id: 'reports', ico: '📊', label: 'Reports' },
   { id: 'budgets', ico: '🎯', label: 'Budgets' },
+  { id: 'goals', ico: '🐷', label: 'Savings goals' },
   { id: 'family', ico: '👪', label: 'Family view' },
   { id: 'sync', ico: '🔄', label: 'Sync' },
   { id: 'categories', ico: '🗂️', label: 'Categories' },

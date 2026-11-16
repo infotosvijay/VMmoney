@@ -108,7 +108,12 @@ async function render() {
     await def.render(view, ctx);
   } catch (e) {
     console.error(e);
-    view.innerHTML = `<div class="card"><h2>Something went wrong</h2><p class="muted">${esc(e.message)}</p></div>`;
+    const details = `${e.stack || e.message}\nroute: ${route}\napp: ${VERSION}`;
+    view.innerHTML = `<div class="card"><h2>Something went wrong</h2><p class="muted">${esc(e.message)}</p>
+      <div class="row"><button type="button" class="btn" data-copy-error>Copy details</button><a class="btn primary" href="#/${esc(current.home)}">Go home</a></div></div>`;
+    $('[data-copy-error]', view).onclick = async () => {
+      try { await navigator.clipboard.writeText(details); toast('Details copied'); } catch { toast('Could not copy'); }
+    };
   }
   const slide = consumeSlide();
   if (slide) { view.classList.add('slide-' + slide); setTimeout(() => view.classList.remove('slide-' + slide), 260); }

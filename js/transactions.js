@@ -3,21 +3,25 @@
 import * as db from './db.js';
 import { cfg } from './db.js';
 import { base, todayStr, FAMILY, familyMember, nowISO } from './models.js';
+import { parseSearch, amountOk } from './search.js';
 
 export const mine = (r) => r.ownerId === cfg.memberId;
 export const canEdit = (t) => t.ownerId === cfg.memberId;
 
-export async function add(data) {
-  const t = {
+/** A complete transaction record (not saved). Pass `id` in data for a fixed id. */
+export function make(data) {
+  return {
     ...base(cfg.memberId),
     type: 'expense', amount: 0, date: todayStr(),
     categoryId: null, subcategoryId: null, accountId: null, toAccountId: null,
-    paymentMode: 'online', note: '', toMemberId: null, direction: null, tags: [], receiptPhoto: null, recurringId: null,
+    paymentMode: 'online', note: '', toMemberId: null, direction: null, tags: [], receiptPhoto: null, recurringId: null, splitId: null,
     ...data,
   };
-  return db.put('transactions', t);
 }
+export const add = (data) => db.put('transactions', make(data));
 export const update = (id, patch) => db.update('transactions', id, patch);
+/** One patch for many entries: one write, one screen refresh. */
+export const updateMany = (ids, patch) => db.updateMany('transactions', ids, patch);
 export const remove = (id) => db.update('transactions', id, { deleted: true });
 
 /** Filter transactions. scope: 'mine' | 'all'. Returns newest first. */
@@ -37,20 +41,57 @@ export function query(f = {}) {
   if (f.max) list = list.filter((t) => t.amount <= f.max);
   if (f.text?.trim()) {
     // every word typed must appear somewhere on the entry: note, tags, category, subcategory, amount, account, type, who, date
-    const clean = (s) => String(s ?? '').replace(/\uFE0F/g, '').toLowerCase();
-    const words = clean(f.text).split(/\s+/).filter(Boolean).map((w) => w.replace(/,/g, ''));
+    const sx = parseSearch(clean(f.text));
+    const words = sx.words.map((w) => w.replace(/,/g, '')).filter(Boolean);
+    const has = (name, wants) => wants.every((w) => clean(name).includes(w));
     list = list.filter((t) => {
-      const hay = clean([
-        t.note, (t.tags || []).join(' '),
-        db.get('categories', t.categoryId)?.name, db.get('categories', t.subcategoryId)?.name,
-        t.amount, Number(t.amount).toFixed(2),
-        db.get('accounts', t.accountId)?.name, t.toAccountId && db.get('accounts', t.toAccountId)?.name,
-        t.type, db.get('members', t.ownerId)?.name, t.date,
-      ].filter((x) => x !== null && x !== undefined && x !== '').join(' '));
+      if (!amountOk(t.amount, sx)) return false;
+      if (sx.type.length && !sx.type.every((w) => t.type.startsWith(w))) return false;
+      if (sx.cat.length && !sx.cat.every((w) => clean(db.get('categories', t.categoryId)?.name).includes(w) || clean(db.get('categories', t.subcategoryId)?.name).includes(w))) return false;
+      if (sx.acc.length && !sx.acc.every((w) => clean(db.get('accounts', t.accountId)?.name).includes(w) || clean(db.get('accounts', t.toAccountId)?.name).includes(w))) return false;
+      if (sx.member.length && !has(db.get('members', t.ownerId)?.name, sx.member)) return false;
+      if (sx.note.length && !has(t.note, sx.note)) return false;
+      if (!words.length) return true;
+      const hay = searchText(t);
       return words.every((w) => hay.includes(w));
     });
   }
-  return list.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.createdAt < b.createdAt ? 1 : -1));
+  return list.sort(newestFirst);
+}
+
+const clean = (s) => String(s ?? '').replace(/\uFE0F/g, '').toLowerCase();
+
+/** Newest first; ties broken by creation time, then id, so the order never flickers. */
+export const newestFirst = (a, b) =>
+  a.date !== b.date ? (a.date < b.date ? 1 : -1)
+    : a.createdAt !== b.createdAt ? (a.createdAt < b.createdAt ? 1 : -1)
+      : a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
+
+// The searchable text of an entry is rebuilt only after some data has changed, not on every keystroke.
+const hayCache = new WeakMap();
+function searchText(t) {
+  const v = db.version();
+  const hit = hayCache.get(t);
+  if (hit && hit.v === v) return hit.hay;
+  const hay = clean([
+    t.note, (t.tags || []).join(' '),
+    db.get('categories', t.categoryId)?.name, db.get('categories', t.subcategoryId)?.name,
+    t.amount, Number(t.amount).toFixed(2),
+    db.get('accounts', t.accountId)?.name, t.toAccountId && db.get('accounts', t.toAccountId)?.name,
+    t.type, db.get('members', t.ownerId)?.name, t.date,
+  ].filter((x) => x !== null && x !== undefined && x !== '').join(' '));
+  hayCache.set(t, { v, hay });
+  return hay;
+}
+
+/** The entry you added most recently (by when it was entered, not its date), for "Repeat last". Transfers are skipped. */
+export function lastEntry() {
+  let best = null;
+  for (const t of db.live('transactions')) {
+    if (t.ownerId !== cfg.memberId || t.type === 'transfer') continue;
+    if (!best || t.createdAt > best.createdAt) best = t;
+  }
+  return best;
 }
 
 /** True once this phone has received the other person's entries from the hub. */
@@ -151,7 +192,7 @@ export const memberColor = (id) => db.get('members', id)?.color || '#64748b';
 export async function ensureFamilyMembers() {
   for (const f of FAMILY) {
     if (db.get('members', f.id)) continue;
-    const t = '2026-01-01T00:00:00.000Z';
+    const t = '1970-01-01T00:00:00.000Z'; // older than any real edit, so a real edit always wins a merge
     await db.put('members', { id: f.id, ownerId: f.id, createdAt: t, updatedAt: t, deleted: false, name: f.name, color: f.color, role: 'member', joinedAt: t, archived: false }, { silent: true });
   }
 }
@@ -179,7 +220,14 @@ const dayNum = (iso) => Math.round(new Date(`${iso}T00:00:00Z`).getTime() / 8640
  * the same way, for the same amount, within a day of each other, recorded by different people.
  * Returns { events: [{ from, to, amount, date, ids: [..] }], matched }.
  */
+let eventsCache = { v: -1, value: null };
 export function transferEvents() {
+  const v = db.version();
+  if (eventsCache.v !== v) eventsCache = { v, value: computeTransferEvents() };
+  return eventsCache.value;
+}
+
+function computeTransferEvents() {
   const evs = memberTransfers().map((t) => {
     const sent = t.direction === 'out';
     return { id: t.id, from: sent ? t.ownerId : t.toMemberId, to: sent ? t.toMemberId : t.ownerId, amount: t.amount, date: t.date, by: t.ownerId,

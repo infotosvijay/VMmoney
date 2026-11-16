@@ -12,9 +12,12 @@ import * as hubfile from '../hubfile.js';
 import * as live from '../livesync.js';
 import { qrSvg } from './qr.js';
 import { $, $$, money, toast, confirmDialog, promptDialog, pickFiles, shareOrDownload, empty, progress, relTime, daysSince, drawChart, cssVar, sheet, onSwipe, monthTitle, pickMonth } from './components.js';
-import { entryScreen, transactionsScreen, reportsScreen } from './shared-screens.js';
+import { entryScreen } from './entry-screen.js';
+import { transactionsScreen } from './transactions-screen.js';
+import { reportsScreen } from './reports-screen.js';
 import { positionScreen, positionCard } from './position-screens.js';
 import { categoryDetailScreen, categoryTitle, categoryBack } from './stats-screens.js';
+import { goalsScreen } from './goals-screen.js';
 import { categoriesScreen, budgetsScreen, accountsScreen, recurringScreen, settingsScreen } from './settings-screens.js';
 
 const askPw = (n) => promptDialog({ title: 'Password needed', label: `Password for ${n}`, type: 'password', okText: 'Open' });
@@ -306,6 +309,7 @@ export const hubRoutes = {
   category: { title: categoryTitle, render: categoryDetailScreen, back: categoryBack, navId: 'reports' },
   import: { title: 'Import center', render: importScreen },
   categories: { title: 'Master categories', render: (r, c) => categoriesScreen(r, c, { hub: true }) },
+  goals: { title: 'Savings goals', render: goalsScreen },
   budgets: { title: 'Budgets', render: (r, c) => budgetsScreen(r, c, { hub: true }) },
   members: { title: 'Members', render: membersScreen },
   send: { title: 'Send to members', render: sendScreen },
@@ -325,6 +329,7 @@ export const hubNav = [
   { id: 'reports', ico: '📈', label: 'Reports' },
   { id: 'categories', ico: '🗂️', label: 'Categories' },
   { id: 'budgets', ico: '🎯', label: 'Budgets' },
+  { id: 'goals', ico: '🐷', label: 'Savings goals' },
   { id: 'members', ico: '👪', label: 'Members' },
   { id: 'send', ico: '📤', label: 'Send to members' },
   { id: 'masterfile', ico: '💾', label: 'Master file' },

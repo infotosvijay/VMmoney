@@ -194,6 +194,9 @@ Service workers need `https` or `localhost`:
   `js/transactions.js`, `js/holdings.js` (Balances), `js/budgets.js`, `js/recurring.js`, `js/reports.js`
 - `js/sync.js` file packages and merge rules, `js/livesync.js` live sync, `js/hubfile.js` family.json auto-save,
   `js/csvimport.js`, `js/lock.js`
-- `js/ui/*` screens: member, hub, shared, settings, position (Balances), components
+- `js/ui/*` screens: member, hub, settings, position (Balances), stats, components. Shared pieces: `rows.js` (list rows),
+  `entry-screen.js`, `transactions-screen.js`, `reports-screen.js`
 - `js/ui/qr.js` QR pairing: draws the code and scans it with the camera
 - `js/vendor/` Chart.js, PeerJS, qrcode-generator and jsQR (bundled so everything works offline)
+- `tests/` unit tests (`npm test`, needs Node 20+). They also check that every script is listed in `sw.js`, so a new file
+  can't be forgotten.

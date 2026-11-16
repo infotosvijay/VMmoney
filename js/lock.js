@@ -14,6 +14,9 @@ async function hashPin(pin, salt) {
   return b64(await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' }, k, 256));
 }
 
+/** Seconds to wait after this many wrong PINs in a row: none for 4, then 30s, 1 min, 5 min, 15 min. */
+export const lockoutSeconds = (fails) => (fails < 5 ? 0 : [30, 60, 300, 900][Math.min(fails - 5, 3)]);
+
 export const hasPin = () => !!cfg.pinHash;
 export const hasBiometric = () => !!cfg.bioCredId;
 export const biometricSupported = () => !!(window.PublicKeyCredential && navigator.credentials);
@@ -28,7 +31,7 @@ export async function verifyPin(pin) {
   return cfg.pinHash && (await hashPin(pin, unb64(cfg.pinSalt))) === cfg.pinHash;
 }
 export async function removeLock() {
-  for (const k of ['pinHash', 'pinSalt', 'bioCredId']) await db.delCfg(k);
+  for (const k of ['pinHash', 'pinSalt', 'bioCredId', 'pinFails', 'pinLockUntil']) await db.delCfg(k);
   await db.setCfg('lockType', 'none');
 }
 
@@ -85,7 +88,20 @@ export function lock() {
   const dots = [...el.querySelectorAll('.lock-dots i')];
   const msg = el.querySelector('.lock-msg');
   const paint = () => dots.forEach((d, i) => d.classList.toggle('on', i < entered.length));
-  const unlock = () => { locked = false; el.hidden = true; el.innerHTML = ''; armIdle(); };
+  let tick = null;
+  const waitLeft = () => Math.ceil((Number(cfg.pinLockUntil) - Date.now()) / 1000);
+  const showWait = () => {
+    const left = waitLeft();
+    if (left > 0) { msg.textContent = `Too many wrong PINs. Try again in ${left >= 60 ? Math.ceil(left / 60) + ' min' : left + 's'}.`; return true; }
+    clearInterval(tick);
+    if (msg.textContent.startsWith('Too many')) msg.textContent = '';
+    return false;
+  };
+  const unlock = async () => {
+    clearInterval(tick);
+    locked = false; el.hidden = true; el.innerHTML = ''; armIdle();
+    if (cfg.pinFails) { await db.setCfg('pinFails', 0); await db.delCfg('pinLockUntil'); }
+  };
   const tryBio = async () => {
     if (!hasBiometric()) return;
     try { await biometricUnlock(); unlock(); } catch { msg.textContent = 'Biometric failed. Use your PIN.'; }
@@ -93,6 +109,7 @@ export function lock() {
   el.onclick = async (e) => {
     const k = e.target.closest('button')?.dataset.k;
     if (!k) return;
+    if (showWait()) return; // locked out for a while after too many wrong PINs
     msg.textContent = '';
     if (k === 'del') entered = entered.slice(0, -1);
     else if (k === 'bio') return tryBio();
@@ -100,9 +117,20 @@ export function lock() {
     paint();
     if (entered.length === 4) {
       if (await verifyPin(entered)) unlock();
-      else { msg.textContent = 'Wrong PIN'; entered = ''; setTimeout(paint, 250); }
+      else {
+        const fails = (Number(cfg.pinFails) || 0) + 1;
+        await db.setCfg('pinFails', fails);
+        const secs = lockoutSeconds(fails);
+        entered = ''; setTimeout(paint, 250);
+        if (secs) {
+          await db.setCfg('pinLockUntil', Date.now() + secs * 1000);
+          showWait();
+          tick = setInterval(showWait, 1000);
+        } else msg.textContent = 'Wrong PIN';
+      }
     }
   };
+  if (showWait()) tick = setInterval(showWait, 1000); // a lockout survives closing and reopening the app
   if (hasBiometric()) tryBio();
 }
 
