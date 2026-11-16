@@ -345,7 +345,7 @@ export async function settingsScreen(root, ctx) {
       <div class="row"><button class="btn" data-mode>Switch to ${cfg.mode === 'hub' ? 'Member' : 'Family Hub'} mode</button></div>
     </div>
     <div class="card stack"><h2>About</h2>
-      <p class="row small"><img src="icons/logo-160.png" alt="" width="36" height="47"> <span><b>VM Money</b> · ${esc(VERSION)}</span></p>
+      <p class="row small"><img src="icons/logo-v2.png" alt="" width="36" height="36"> <span><b>VM Money</b> · ${esc(VERSION)}</span></p>
       <p class="muted small">Your data lives only on your devices. Nothing is sent to any server.</p>
       <div class="row"><button class="btn" data-update>Check for updates</button></div>
     </div>`;

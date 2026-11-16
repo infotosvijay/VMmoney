@@ -101,7 +101,7 @@ async function render() {
   old.replaceWith(view);
   destroyCharts();
   const title = typeof def.title === 'function' ? def.title(ctx) : def.title;
-  const logo = !def.back && (id === current.home) ? '<img class="top-logo" src="icons/logo-160.png" alt="" width="24" height="31">' : '';
+  const logo = !def.back && (id === current.home) ? '<img class="top-logo" src="icons/logo-v2.png" alt="" width="32" height="32">' : '';
   $('#topbar').onclick = null; // a screen may add its own top-bar buttons
   $('#topbar').innerHTML = `${logo}${def.back ? `<a class="btn icon" href="#/${typeof def.back === 'function' ? def.back(ctx) : def.back}" aria-label="Back">${icon('back')}</a>` : ''}<h1>${esc(title)}</h1>${def.topAction ? def.topAction(ctx) : ''}`;
   document.title = `${title} · VM Money`;
@@ -132,7 +132,7 @@ function navHTML(items, cls) {
 
 function buildNav() {
   const items = current.nav;
-  $('#side').innerHTML = `<div class="brand"><img src="icons/logo-160.png" alt="" width="30" height="39"> VM Money</div>${navHTML(items)}<div class="spacer"></div><div class="muted small" style="padding:8px 12px">${esc(cfg.memberName)} · ${cfg.mode === 'hub' ? 'Hub' : 'Member'} · ${esc(VERSION)}</div>`;
+  $('#side').innerHTML = `<div class="brand"><img src="icons/logo-v2.png" alt="" width="32" height="32"> VM Money</div>${navHTML(items)}<div class="spacer"></div><div class="muted small" style="padding:8px 12px">${esc(cfg.memberName)} · ${cfg.mode === 'hub' ? 'Hub' : 'Member'} · ${esc(VERSION)}</div>`;
   const tabs = items.filter((n) => n.tab);
   $('#tabbar').innerHTML = navHTML(tabs) + `<button type="button" class="nav-item" data-more><span class="ico">${icon('menu')}</span><span>More</span></button>`;
 }
@@ -172,7 +172,7 @@ function onboarding() {
     const hubOK = hubfile.supported;
     boot.innerHTML = `
       <div class="onboard">
-        <img src="icons/logo-160.png" alt="" width="72" height="94" style="display:block;margin:0 0 10px">
+        <img src="icons/logo-v2.png" alt="" width="72" height="72" style="display:block;margin:0 0 10px">
         <h1>VM Money</h1>
         <p class="muted">Income, expenses and balances for VJ and MM. Works offline; your data stays on your devices.</p>
         <form id="ob" class="stack" style="margin-top:14px">

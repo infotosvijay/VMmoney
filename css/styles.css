@@ -332,7 +332,7 @@ dialog.sheet::backdrop { background: rgba(0,0,0,.45); }
 @keyframes pulse { 50% { opacity: .45; } }
 @media (prefers-reduced-motion: reduce) { .boot img { animation: none; } }
 #side .brand { display: flex; align-items: center; gap: 10px; }
-.top-logo { height: 31px; width: auto; flex: none; background: rgba(255,255,255,.92); border-radius: 8px; padding: 2px 4px; }
+.top-logo { height: 32px; width: 32px; flex: none; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, .15); }
 @media (min-width: 900px) { .top-logo { display: none; } }
 
 /* ---------- quick date row + mobile polish ---------- */

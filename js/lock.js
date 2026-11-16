@@ -75,7 +75,7 @@ export function lock() {
   el.hidden = false;
   el.innerHTML = `
     <div class="lock-box">
-      <img src="icons/logo-160.png" alt="" width="60" height="78" style="margin-bottom:8px"><div class="lock-title">Enter PIN</div>
+      <img src="icons/logo-v2.png" alt="" width="64" height="64" style="margin-bottom:8px"><div class="lock-title">Enter PIN</div>
       <div class="lock-dots" aria-hidden="true">${'<i></i>'.repeat(4)}</div>
       <div class="lock-msg" role="alert"></div>
       <div class="keypad">

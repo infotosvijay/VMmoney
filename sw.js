@@ -10,7 +10,7 @@ const ASSETS = [
   './js/holdings.js', './js/csvimport.js', './js/sync.js', './js/livesync.js', './js/hubfile.js', './js/lock.js', './js/filters.js', './js/search.js', './js/goals.js', './js/ui/goals-screen.js',
   './js/ui/components.js', './js/ui/rows.js', './js/ui/entry-screen.js', './js/ui/transactions-screen.js', './js/ui/reports-screen.js', './js/ui/position-screens.js', './js/ui/stats-screens.js', './js/ui/settings-screens.js', './js/ui/member-screens.js', './js/ui/hub-screens.js', './js/ui/qr.js', './js/ui/icons.js',
   './js/vendor/chart.min.js', './js/vendor/peerjs.min.js', './js/vendor/qrcode.min.js', './js/vendor/jsqr.min.js',
-  './icons/icon-192.png', './icons/apple-touch-icon.png', './icons/logo-160.png', './icons/icon-512.png', './icons/icon-maskable-512.png'
+  './icons/icon-192-v2.png', './icons/apple-touch-icon-v2.png', './icons/logo-v2.png', './icons/icon-512-v2.png', './icons/icon-maskable-512-v2.png'
 ];
 
 self.addEventListener('install', (e) => {
