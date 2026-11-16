@@ -17,6 +17,9 @@ export function applyTheme() {
 }
 /** Chart colours from the palette: a blue ramp for the biggest slices, grey for the rest. */
 export const chartColors = (n) => Array.from({ length: n }, (_, i) => cssVar(i < 5 ? `--chart-${i + 1}` : '--chart-rest'));
+/** Distinct hues for categories (pie slices and their swatches), in a fixed order; from the 8th on: grey "Other". */
+export const CAT_SLOTS = 7;
+export const catColor = (i) => cssVar(i < CAT_SLOTS ? `--cat-${i + 1}` : '--cat-other');
 export const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
 export const $ = (s, r = document) => r.querySelector(s);

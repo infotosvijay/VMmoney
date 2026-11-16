@@ -171,11 +171,11 @@ export async function budgetsScreen(root, ctx, { hub = false } = {}) {
   root.onclick = async (e) => {
     const b = e.target.closest('button');
     if (!b) return;
-    if ('add' in b.dataset) budgetSheet(null, { hub }, ctx);
+    if ('add' in b.dataset) ctx.go('budget');
     else if (b.dataset.menu) {
       const id = b.dataset.menu;
       const choice = await pickDialog(sts.find((x) => x.budget.id === id)?.label || 'Budget', [['edit', 'Edit'], ['delete', 'Delete']]);
-      if (choice === 'edit') budgetSheet(db.get('budgets', id), { hub }, ctx);
+      if (choice === 'edit') ctx.go(`budget?id=${encodeURIComponent(id)}`);
       else if (choice === 'delete') {
         await budgets.remove(id);
         ctx.refresh();
@@ -196,39 +196,6 @@ function paceText(s) {
   const p = budgets.pace(s);
   if (p.left <= 0) return `Over by ${money(-p.left)}. ${p.daysLeft} day${p.daysLeft === 1 ? '' : 's'} left this month.`;
   return `${money(p.left)} left · about ${money(Math.floor(p.perDay))} a day for the next ${p.daysLeft} day${p.daysLeft === 1 ? '' : 's'}`;
-}
-
-function budgetSheet(existing, { hub }, ctx) {
-  const tree = cats.tree('expense');
-  const members = tx.members();
-  const cur = existing || { scope: hub ? 'family' : 'member', memberId: cfg.memberId, categoryId: '', subcategoryId: '', limit: '' };
-  const s = sheet(existing ? 'Edit budget' : 'New budget', `<form class="stack">
-    ${hub ? `<label class="field"><span>Applies to</span><select name="scope"><option value="family" ${cur.scope === 'family' ? 'selected' : ''}>Whole family</option><option value="member" ${cur.scope === 'member' ? 'selected' : ''}>One member</option></select></label>
-      <label class="field" id="memwrap"><span>Member</span><select name="member">${members.map((m) => `<option value="${esc(m.id)}" ${m.id === cur.memberId ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></label>` : ''}
-    <label class="field"><span>Category</span><select name="cat" required><option value="">Choose…</option>${tree.map((x) => `<option value="${esc(x.cat.id)}" ${x.cat.id === cur.categoryId ? 'selected' : ''}>${esc(x.cat.icon)} ${esc(x.cat.name)}</option>`).join('')}</select></label>
-    <label class="field"><span>Subcategory (optional)</span><select name="sub"></select></label>
-    <label class="field"><span>Monthly limit (${esc(cfg.currency || 'INR')})</span><input name="limit" type="text" inputmode="none" data-keypad autocomplete="off" value="${esc(cur.limit)}" required></label>
-    <div class="row end"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary">Save</button></div></form>`);
-  const f = $('form', s.el);
-  const fillSubs = () => {
-    const subs = tree.find((x) => x.cat.id === f.cat.value)?.subs || [];
-    f.sub.innerHTML = '<option value="">Whole category</option>' + subs.map((x) => `<option value="${esc(x.id)}" ${x.id === cur.subcategoryId ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
-  };
-  fillSubs();
-  f.cat.onchange = () => { cur.subcategoryId = ''; fillSubs(); };
-  const memwrap = $('#memwrap', s.el);
-  const toggleMem = () => { if (memwrap) memwrap.hidden = f.scope.value !== 'member'; };
-  if (f.scope) { f.scope.onchange = toggleMem; toggleMem(); }
-  f.onsubmit = async (e) => {
-    e.preventDefault();
-    const limit = Math.round(evalAmount(f.limit.value) * 100) / 100;
-    if (!(limit > 0)) { toast('Enter a monthly limit greater than zero.'); f.limit.focus(); return; }
-    await budgets.save({
-      id: existing?.id, scope: f.scope ? f.scope.value : 'member', memberId: f.member ? f.member.value : cfg.memberId,
-      categoryId: f.cat.value, subcategoryId: f.sub.value, limit,
-    });
-    s.close(); ctx.refresh();
-  };
 }
 
 // ================================================================ accounts

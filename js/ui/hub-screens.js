@@ -19,6 +19,7 @@ import { reportsScreen } from './reports-screen.js';
 import { positionScreen, positionCard } from './position-screens.js';
 import { categoryDetailScreen, categoryTitle, categoryBack } from './stats-screens.js';
 import { goalsScreen } from './goals-screen.js';
+import { budgetFormScreen, goalFormScreen } from './plan-forms.js';
 import { categoriesScreen, budgetsScreen, accountsScreen, recurringScreen, settingsScreen } from './settings-screens.js';
 
 const askPw = (n) => promptDialog({ title: 'Password needed', label: `Password for ${n}`, type: 'password', okText: 'Open' });
@@ -85,7 +86,7 @@ async function dashboardScreen(root, ctx) {
   });
 
   const showMonth = (next) => {
-    history.replaceState(null, '', next === cur ? '#/dashboard' : `#/dashboard?m=${next}`);
+    history.replaceState(history.state, '', next === cur ? '#/dashboard' : `#/dashboard?m=${next}`);
     ctx.refresh();
   };
   root.onclick = async (e) => {
@@ -312,6 +313,8 @@ export const hubRoutes = {
   categories: { title: 'Master categories', render: (r, c) => categoriesScreen(r, c, { hub: true }) },
   goals: { title: 'Savings goals', render: goalsScreen },
   budgets: { title: 'Budgets', render: (r, c) => budgetsScreen(r, c, { hub: true }) },
+  budget: { title: (c) => (c.params.get('id') ? 'Edit budget' : 'New budget'), render: (r, c) => budgetFormScreen(r, c, { hub: true }), back: 'budgets', navId: 'budgets' },
+  goal: { title: (c) => (c.params.get('id') ? 'Edit goal' : 'New goal'), render: goalFormScreen, back: 'goals', navId: 'goals' },
   members: { title: 'Members', render: membersScreen },
   send: { title: 'Send to members', render: sendScreen },
   masterfile: { title: 'Master file', render: masterFileScreen },

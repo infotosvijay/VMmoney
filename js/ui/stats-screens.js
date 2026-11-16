@@ -43,7 +43,7 @@ export async function categoryDetailScreen(root, ctx) {
     const n = { c, s, p: mode, d, t: type, w: view.w === 'me' ? '' : view.w, ...patch };
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(n)) if (v) qs.set(k, v);
-    history.replaceState(null, '', `#/category?${qs}`);
+    history.replaceState(history.state, '', `#/category?${qs}`);
     ctx.refresh();
   };
 
@@ -88,6 +88,9 @@ export async function categoryDetailScreen(root, ctx) {
       ${subs.map((x) => `<div class="rank ${s === x.id ? 'sel' : ''}" data-sub="${esc(x.id)}"><span class="pct" style="--c:${esc(color)}">${Math.round((x.total / (total || 1)) * 100)}%</span><span class="grow">${esc(x.name)} <span class="muted small">(${x.count})</span></span><span class="num">${money(x.total)}</span></div>`).join('') || '<p class="muted">Nothing in this period.</p>'}
     </div>
 
+    <h2 class="sec" id="entries">${subName ? esc(subName) : 'Entries'}</h2>
+    ${list.length ? groupedList(list, { showMember: scope === 'all' }) : empty('No entries in this period.')}
+
     <div class="grid two">
       <div class="card"><h2>History${subName ? ' · ' + esc(subName) : ''}</h2><div class="chart-box"><canvas id="c-hist" aria-label="Monthly history"></canvas></div></div>
       <div class="card"><h2>Month by month</h2>
@@ -103,8 +106,6 @@ export async function categoryDetailScreen(root, ctx) {
         </tbody></table></div>
     </div>
 
-    <h2 class="sec">Entries</h2>
-    ${list.length ? groupedList(list, { showMember: scope === 'all' }) : empty('No entries in this period.')}
   `;
 
   root.onclick = (e) => {

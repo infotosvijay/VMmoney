@@ -30,6 +30,27 @@ test('adding money, taking it out (never below zero) and reaching the target', a
   assert.equal(goals.progress(db.get('holdings', g.id)).done, true);
 });
 
+test('a goal linked to a category fills up from its entries, from its start date on', async () => {
+  await freshDb();
+  const acc = tx.onlineAccount().id;
+  const add = (amount, date, sub = 'ppf') => tx.add({ type: 'expense', amount, date, accountId: acc, categoryId: 'future', subcategoryId: sub });
+  await add(5000, '2026-01-10'); // before the start date: not counted
+  await add(2000, '2026-03-01');
+  await add(1500, '2026-04-01');
+  await add(900, '2026-04-02', 'gold'); // another subcategory: not counted
+  const g = await goals.create({ name: 'PPF', target: 10000, saved: 500, categoryId: 'future', subcategoryId: 'ppf', startDate: '2026-02-01' });
+  let p = goals.progress(db.get('holdings', g.id));
+  assert.equal(p.fromEntries, 3500);
+  assert.equal(p.saved, 4000); // 3500 from entries + 500 typed in
+  assert.equal(goals.linkedEntries(g).length, 2);
+  await goals.contribute(g.id, -10000); // taking out more than there is stops at zero overall
+  assert.equal(goals.progress(db.get('holdings', g.id)).saved, 0);
+  await goals.update(g.id, { categoryId: '' }); // unlinking clears the link fields
+  p = goals.progress(db.get('holdings', g.id));
+  assert.equal(p.fromEntries, 0);
+  assert.equal(db.get('holdings', g.id).subcategoryId, '');
+});
+
 test('goals are shared holdings, and other holdings never show up as goals', async () => {
   await freshDb();
   await db.put('holdings', { id: 'h1', kind: 'bank', name: 'HDFC', createdAt: 'x', updatedAt: 'x', deleted: false }, { silent: true });

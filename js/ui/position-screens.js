@@ -70,7 +70,7 @@ export async function positionScreen(root, ctx) {
     const b = e.target.closest('[data-tab]');
     if (!b) return;
     tab = b.dataset.tab;
-    history.replaceState(null, '', `#/position?s=${tab}`);
+    history.replaceState(history.state, '', `#/position?s=${tab}`);
     ctx.refresh();
   });
   wireMoneyInputs(root);
@@ -81,7 +81,7 @@ export async function positionScreen(root, ctx) {
     const n = order.indexOf(tab) + (dir === 'next' ? 1 : -1);
     if (n < 0 || n >= order.length) return false;
     tab = order[n];
-    history.replaceState(null, '', `#/position?s=${tab}`);
+    history.replaceState(history.state, '', `#/position?s=${tab}`);
     ctx.refresh();
   });
 }

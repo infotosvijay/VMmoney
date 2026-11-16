@@ -30,7 +30,7 @@ export async function transactionsScreen(root, ctx) {
   const writeUrl = (n) => {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(n)) if (v && !(k === 'm' && v === thisMonth())) qs.set(k, v);
-    history.replaceState(null, '', '#/transactions' + (qs.toString() ? '?' + qs : ''));
+    history.replaceState(history.state, '', '#/transactions' + (qs.toString() ? '?' + qs : ''));
   };
   const setF = (patch) => {
     writeUrl({ ...f, ...patch });
@@ -38,7 +38,6 @@ export async function transactionsScreen(root, ctx) {
     ctx.refresh();
   };
 
-  const accounts = hub ? db.live('accounts') : tx.myAccounts({ includeArchived: true });
   const isMonth = /^\d{4}-\d{2}$/.test(f.m);
   let list, tot, page, activeCount, chips;
   const compute = () => {
@@ -99,7 +98,6 @@ export async function transactionsScreen(root, ctx) {
   root.innerHTML = `
     ${hub ? '' : installBanner() + syncReminder(hasChanges, peer)}
     ${view.seg ? whoSeg(view.w) : ''}
-    <div class="searchbar"><label class="search-field">${icon('search')}<input id="q" type="search" placeholder="Search entries" title="Words must all match. Operators: >500  <100  cat:food  type:income  acc:cash  member:vj  note:rent" value="${esc(f.q)}" aria-label="Search" style="grid-column:1/-1"></label></div>
     <div class="card">
       <div class="row">
         ${isMonth ? `<button class="btn icon" data-mnav="-1" aria-label="Previous month">${icon('left')}</button>` : ''}
@@ -111,7 +109,7 @@ export async function transactionsScreen(root, ctx) {
       <details class="more-filters" ${activeCount ? 'open' : ''}><summary id="fsum">${fsumText()}</summary><div class="filters">
         <select id="ftype" aria-label="Type"><option value="">All types</option>${['expense', 'income', 'transfer'].map((t) => `<option value="${t}" ${f.t === t ? 'selected' : ''}>${t[0].toUpperCase() + t.slice(1)}</option>`).join('')}</select>
         <select id="fcat" aria-label="Category">${catFilterOptions(f.c)}</select>
-        <select id="facc" aria-label="Account"><option value="">All accounts</option>${accounts.map((a) => `<option value="${esc(a.id)}" ${f.a === a.id ? 'selected' : ''}>${esc(a.name)}${hub ? ` (${esc(tx.memberName(a.ownerId))})` : ''}</option>`).join('')}</select>
+        <label class="search-field" style="grid-column:1/-1">${icon('search')}<input id="q" type="search" enterkeyhint="search" autocomplete="off" placeholder="Search" title="Category, subcategory, note or amount. All words must match. Also: >500  <100  cat:food  note:rent" value="${esc(f.q)}" aria-label="Search category, note or amount"></label>
         ${hub ? `<select id="fmem" aria-label="Member">${memberOptions(tx.members(), f.u)}</select>` : ''}
         <div class="chips date-chips date-row" style="grid-column:1/-1" role="group" aria-label="Date">${(() => {
           // a day picked here (or a range from an old link / saved filter): only that date shows, with ✕ to go back to the presets
@@ -127,8 +125,6 @@ export async function transactionsScreen(root, ctx) {
           <button type="button" class="btn small" data-savef ${activeCount ? '' : 'disabled'}>Save this</button>
           <button type="button" class="btn small" data-delf ${savedPick ? '' : 'disabled'}>Delete</button>
         </div>
-        <input id="fmin" type="text" inputmode="none" data-keypad autocomplete="off" placeholder="Min amount" value="${esc(f.min)}" aria-label="Minimum amount">
-        <input id="fmax" type="text" inputmode="none" data-keypad autocomplete="off" placeholder="Max amount" value="${esc(f.max)}" aria-label="Maximum amount">
       </div></details>
       <div class="row between" id="tx-bottom">${bottomHTML()}
       </div>
@@ -151,7 +147,6 @@ export async function transactionsScreen(root, ctx) {
   }, 200);
   $('#ftype', root).onchange = (e) => setF({ t: e.target.value });
   $('#fcat', root).onchange = (e) => setF({ c: e.target.value });
-  $('#facc', root).onchange = (e) => setF({ a: e.target.value });
   $('#fmem', root)?.addEventListener('change', (e) => setF({ u: e.target.value }));
   // Any date range switches the period to "All time". Emptying both dates goes back to the month.
   const setDates = (df, dt) => setF(df || dt ? { df, dt, m: 'all' } : { df: '', dt: '', m: thisMonth() });
@@ -164,8 +159,6 @@ export async function transactionsScreen(root, ctx) {
     savedPick = s ? s.id : '';
     if (s) setF({ ...BLANK, ...s.f, m: s.f.df || s.f.dt ? 'all' : f.m });
   };
-  $('#fmin', root).onchange = (e) => setF({ min: e.target.value });
-  $('#fmax', root).onchange = (e) => setF({ max: e.target.value });
 
   const selected = new Set();
   const bulkBtn = () => $('[data-bulk]', root);

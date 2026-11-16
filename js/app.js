@@ -93,8 +93,17 @@ async function render() {
   const { route } = parseHash();
   const def = current.routes[route] || current.routes[current.home];
   const id = current.routes[route] ? route : current.home;
-  // read the scroll position before the old screen goes (an empty #view shrinks the page and resets it)
-  const y = window.scrollY;
+  // Each history entry gets a key. Its scroll position is remembered, so going Back (button, swipe or the
+  // top-bar arrow) returns to the same spot. A brand-new entry starts at the top; a refresh of the same
+  // entry (filters, month arrows) keeps the current position.
+  const y = window.scrollY; // read before the old screen goes (an empty #view shrinks the page and resets it)
+  if (scrollKey) scrollPos.set(scrollKey, y);
+  const st = history.state;
+  let target = 0;
+  if (st?.k && st.k === scrollKey) target = y;
+  else if (st?.k && scrollPos.has(st.k)) target = scrollPos.get(st.k);
+  if (!st?.k) history.replaceState({ k: Math.random().toString(36).slice(2), prev: prevHash }, '', location.href);
+  scrollKey = null; // ignore scroll events while the screen is rebuilt
   // fresh #view each render: drops listeners the previous screen attached
   const old = $('#view');
   const view = old.cloneNode(false);
@@ -120,9 +129,21 @@ async function render() {
   const slide = consumeSlide();
   if (slide) { view.classList.add('slide-' + slide); setTimeout(() => view.classList.remove('slide-' + slide), 260); }
   highlightNav(def.navId || id);
-  window.scrollTo(0, route === ctx._lastRoute ? y : 0);
-  ctx._lastRoute = route;
+  window.scrollTo(0, target);
+  if (target) requestAnimationFrame(() => { if (Math.abs(window.scrollY - target) > 2) window.scrollTo(0, target); }); // charts may still be sizing
+  scrollKey = history.state?.k || null;
+  prevHash = location.hash;
 }
+
+const scrollPos = new Map(); // history-entry key -> scrollY
+let scrollKey = null; // the entry on screen now
+let prevHash = '';
+let scrollTick = 0;
+window.addEventListener('scroll', () => {
+  if (scrollTick) return;
+  scrollTick = requestAnimationFrame(() => { scrollTick = 0; if (scrollKey) scrollPos.set(scrollKey, window.scrollY); });
+}, { passive: true });
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 
 // ---------- navigation ----------
 
@@ -144,6 +165,13 @@ function highlightNav(id) {
 }
 
 async function onGlobalClick(e) {
+  // The top-bar back arrow goes Back in history when the screen we came from is the one it points to,
+  // so that screen comes back where it was left (scroll, filters) instead of opening fresh at the top.
+  const back = e.target.closest('#topbar a[aria-label="Back"]');
+  if (back) {
+    const routeOf = (h) => (h || '').replace(/^#\/?/, '').split('?')[0];
+    if (history.state?.prev && routeOf(history.state.prev) === routeOf(back.getAttribute('href'))) { e.preventDefault(); history.back(); return; }
+  }
   const x = e.target.closest('[data-dismiss]');
   if (x) { closeBanner(x.dataset.dismiss); x.closest('.banner')?.remove(); return; }
   if (e.target.closest('[data-more]')) {

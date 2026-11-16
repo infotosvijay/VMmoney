@@ -19,6 +19,7 @@ import { reportsScreen } from './reports-screen.js';
 import { positionScreen, positionCard } from './position-screens.js';
 import { categoryDetailScreen, categoryTitle, categoryBack } from './stats-screens.js';
 import { goalsScreen } from './goals-screen.js';
+import { budgetFormScreen, goalFormScreen } from './plan-forms.js';
 import { categoriesScreen, budgetsScreen, accountsScreen, recurringScreen, settingsScreen } from './settings-screens.js';
 
 // ---------------------------------------------------------------- shared bits
@@ -99,7 +100,7 @@ async function homeScreen(root, ctx) {
     <p style="text-align:center"><a class="btn primary" href="#/add">＋ Add entry</a></p>`;
 
   const showMonth = (next) => {
-    history.replaceState(null, '', next === cur ? '#/home' : `#/home?m=${next}`);
+    history.replaceState(history.state, '', next === cur ? '#/home' : `#/home?m=${next}`);
     ctx.refresh();
   };
   root.onclick = async (e) => {
@@ -298,6 +299,8 @@ export const memberRoutes = {
   category: { title: categoryTitle, render: categoryDetailScreen, back: categoryBack, navId: 'reports' },
   goals: { title: 'Savings goals', render: goalsScreen },
   budgets: { title: 'Budgets', render: (r, c) => budgetsScreen(r, c, { hub: false }) },
+  budget: { title: (c) => (c.params.get('id') ? 'Edit budget' : 'New budget'), render: (r, c) => budgetFormScreen(r, c, { hub: false }), back: 'budgets', navId: 'budgets' },
+  goal: { title: (c) => (c.params.get('id') ? 'Edit goal' : 'New goal'), render: goalFormScreen, back: 'goals', navId: 'goals' },
   family: { title: 'Family view', render: familyScreen },
   sync: { title: 'Sync', render: syncScreen },
   categories: { title: 'Categories', render: (r, c) => categoriesScreen(r, c, { hub: false }) },
