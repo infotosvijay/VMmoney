@@ -569,6 +569,19 @@ dialog.sheet:has(.kpad:not([hidden])) .sheet-body { max-height: calc(88vh - 56px
 .cmp-cell { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 2px; min-height: 44px; text-decoration: none; color: inherit; }
 .cmp-cell .v { white-space: nowrap; }
 .cmp-cell .d { font-size: var(--fs-xs); min-height: 1.2em; }
+.cmp > .h small { display: block; font-size: var(--fs-xs); }
+/* up / down change arrows (SVG, sized to the text beside them) */
+svg.i.delta-i { width: 1em; height: 1em; stroke-width: 2.5; vertical-align: -.125em; margin-right: 1px; }
+/* a category's monthly budget under its name on Reports */
+.rank .bud { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
+.rank .bud .bar { flex: 1; height: 5px; min-width: 40px; }
+.rank .bud > span { display: inline-flex; align-items: center; gap: 3px; flex: none; }
+.rank .bud svg.i { width: 13px; height: 13px; }
+.donut-center > span.num { margin-top: 2px; }
+/* Summary tiles that open their entries */
+a.tile { display: block; text-decoration: none; color: inherit; }
+a.tile:hover { border-color: var(--brand); }
+a.tile:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .cmp > .l { border-bottom: 0; }
 
 /* Budget and goal forms (same parts as Add entry) */

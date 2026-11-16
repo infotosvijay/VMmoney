@@ -80,3 +80,43 @@ test('the statement is oldest first', () => {
   const rows = reports.statementRows([{ date: '2026-02-02', createdAt: 'b' }, { date: '2026-02-01', createdAt: 'z' }, { date: '2026-02-02', createdAt: 'a' }]);
   assert.deepEqual(rows.map((r) => r.createdAt), ['z', 'a', 'b']);
 });
+
+test('periodState: running, past and future periods, with the cut-off for a running one', () => {
+  assert.deepEqual(reports.periodState('2026-11', '2026-11-16'), { state: 'running', cut: '16' });
+  assert.deepEqual(reports.periodState('2026', '2026-11-16'), { state: 'running', cut: '11-16' });
+  assert.equal(reports.periodState('2026-10', '2026-11-16').state, 'past');
+  assert.equal(reports.periodState('2025', '2026-11-16').state, 'past');
+  assert.equal(reports.periodState('2026-12', '2026-11-16').state, 'future');
+});
+
+test('periodRange: a full period, or cut to the same day as the running one (short months clamp)', () => {
+  assert.deepEqual(reports.periodRange('2026-10'), { from: '2026-10-01', to: '2026-10-31' });
+  assert.deepEqual(reports.periodRange('2025'), { from: '2025-01-01', to: '2025-12-31' });
+  assert.deepEqual(reports.periodRange('2026-10', '16'), { from: '2026-10-01', to: '2026-10-16' });
+  assert.deepEqual(reports.periodRange('2026-02', '30'), { from: '2026-02-01', to: '2026-02-28' });
+  assert.deepEqual(reports.periodRange('2024-02', '31'), { from: '2024-02-01', to: '2024-02-29' });
+  assert.deepEqual(reports.periodRange('2025', '11-16'), { from: '2025-01-01', to: '2025-11-16' });
+  assert.deepEqual(reports.periodRange('2023', '02-29'), { from: '2023-01-01', to: '2023-02-28' });
+});
+
+test('average: per day for a month, per month for a year, counting only the time so far / since the first entry', () => {
+  assert.deepEqual(reports.average(1600, '2026-11', '2026-11-16'), { per: 'day', value: 100 });
+  assert.deepEqual(reports.average(3100, '2026-10', '2026-11-16'), { per: 'day', value: 100 });
+  assert.deepEqual(reports.average(11000, '2026', '2026-11-16'), { per: 'month', value: 1000 });
+  assert.deepEqual(reports.average(12000, '2025', '2026-11-16'), { per: 'month', value: 1000 });
+  // data starts in October 2025: three months, not twelve
+  assert.deepEqual(reports.average(3000, '2025', '2026-11-16', '2025-10-05'), { per: 'month', value: 1000 });
+  assert.deepEqual(reports.average(0, '2026-11', '2026-11-16'), { per: 'day', value: 0 });
+});
+
+test('a running month compared up to the same day gives a fair change', async () => {
+  await freshDb();
+  const online = tx.onlineAccount().id;
+  await tx.add({ type: 'expense', amount: 500, date: '2026-10-05', accountId: online });
+  await tx.add({ type: 'expense', amount: 4500, date: '2026-10-28', accountId: online });
+  await tx.add({ type: 'expense', amount: 600, date: '2026-11-10', accountId: online });
+  const { cut } = reports.periodState('2026-11', '2026-11-16');
+  const spent = (key, c) => reports.totals(tx.query(reports.periodRange(key, c))).expense;
+  assert.equal(reports.change(spent('2026-11', cut), spent('2026-10')), -88); // the misleading full-month figure
+  assert.equal(reports.change(spent('2026-11', cut), spent('2026-10', cut)), 20); // Nov 1–16 vs Oct 1–16
+});

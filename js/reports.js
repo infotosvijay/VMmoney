@@ -2,7 +2,7 @@
 
 import * as db from './db.js';
 import { cfg } from './db.js';
-import { addMonths, thisMonth, nowISO } from './models.js';
+import { addMonths, thisMonth, nowISO, monthRange } from './models.js';
 import * as cats from './categories.js';
 import * as tx from './transactions.js';
 
@@ -53,6 +53,52 @@ export function byMember(list) {
     e[t.type] += t.amount;
   }
   return [...map.values()].sort((a, b) => b.expense - a.expense);
+}
+
+/** A 'YYYY-MM-DD' date moved back to the last day of its month when that month is shorter (Feb 30 -> Feb 28/29). */
+const clampDay = (date) => {
+  const [y, m, d] = date.split('-').map(Number);
+  const last = new Date(y, m, 0).getDate();
+  return d > last ? `${date.slice(0, 8)}${String(last).padStart(2, '0')}` : date;
+};
+
+/**
+ * The dates of a period: 'YYYY' (a year) or 'YYYY-MM' (a month).
+ * With `cut` it stops at the same point a running period has reached, so a half-gone month is compared with the same
+ * days of another month: `cut` is the day ('16') for a month, or the month and day ('11-16') for a year.
+ */
+export function periodRange(key, cut = null) {
+  if (key.length === 4) return { from: `${key}-01-01`, to: cut ? clampDay(`${key}-${cut}`) : `${key}-12-31` };
+  const r = monthRange(key);
+  return cut ? { from: r.from, to: clampDay(`${key}-${cut}`) } : r;
+}
+
+/**
+ * Where a period stands on `today`: running (today falls inside it), future (it has not started) or past.
+ * `cut` is what periodRange needs to compare other periods with the running one up to the same point.
+ */
+export function periodState(key, today) {
+  const now = key.length === 4 ? today.slice(0, 4) : today.slice(0, 7);
+  if (key > now) return { state: 'future', cut: null };
+  if (key < now) return { state: 'past', cut: null };
+  return { state: 'running', cut: key.length === 4 ? today.slice(5) : today.slice(8) };
+}
+
+/**
+ * The average per month (year view) or per day (month view) of `total`.
+ * A running period only counts the months / days so far; a year that started part-way through (the first entry came
+ * later than January) only counts from that month.
+ */
+export function average(total, key, today, firstDate = null) {
+  const { state } = periodState(key, today);
+  if (key.length === 4) {
+    const last = state === 'running' ? Number(today.slice(5, 7)) : 12;
+    const first = firstDate && firstDate.slice(0, 4) === key ? Number(firstDate.slice(5, 7)) : 1;
+    return { per: 'month', value: total / Math.max(1, last - first + 1) };
+  }
+  const [y, m] = key.split('-').map(Number);
+  const days = state === 'running' ? Number(today.slice(8)) : new Date(y, m, 0).getDate();
+  return { per: 'day', value: total / Math.max(1, days) };
 }
 
 /** Percent change from `before` to `now`, or null when there is nothing to compare with. */

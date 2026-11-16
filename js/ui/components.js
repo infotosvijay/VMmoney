@@ -128,8 +128,11 @@ export function pickFiles({ accept = '.json,application/json', multiple = false 
 /** The month title as a button: tap it to jump to any month with the Year / Month dropdowns (see pickMonth). */
 export const monthTitle = (label) => `<button type="button" class="mpick" data-mpick title="Choose a month">${esc(label)} ${icon('down', { cls: 'sm' })}</button>`;
 
-/** Year + Month dropdowns in a sheet. Resolves 'YYYY-MM', or null if closed. `max` caps the choice (e.g. this month). */
-export function pickMonth(current, { max = null } = {}) {
+/**
+ * Year + Month dropdowns in a sheet. Resolves 'YYYY-MM', or null if closed. `max` caps the choice (e.g. this month).
+ * `yearOnly` shows just the Year dropdown and resolves 'YYYY'.
+ */
+export function pickMonth(current, { max = null, yearOnly = false } = {}) {
   const [cy, cm] = (/^\d{4}-\d{2}$/.test(current) ? current : (max || thisMonth())).split('-').map(Number);
   const firstYear = db.live('transactions').reduce((y, t) => (t.date && +t.date.slice(0, 4) < y ? +t.date.slice(0, 4) : y), cy);
   const lastYear = Math.max(cy, max ? +max.slice(0, 4) : new Date().getFullYear() + 1);
@@ -138,9 +141,9 @@ export function pickMonth(current, { max = null } = {}) {
   const names = Array.from({ length: 12 }, (_, i) => new Date(2000, i, 1).toLocaleString('en-IN', { month: 'long' }));
   return new Promise((resolve) => {
     let result = null;
-    const s = sheet('Go to month', `<form class="stack">
+    const s = sheet(yearOnly ? 'Go to year' : 'Go to month', `<form class="stack">
         <div class="row" style="flex-wrap:nowrap">
-          <label class="field grow"><span>Month</span><select name="m">${names.map((n, i) => `<option value="${i + 1}" ${i + 1 === cm ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+          <label class="field grow"${yearOnly ? ' hidden' : ''}><span>Month</span><select name="m">${names.map((n, i) => `<option value="${i + 1}" ${i + 1 === cm ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
           <label class="field grow"><span>Year</span><select name="y">${years.map((y) => `<option value="${y}" ${y === cy ? 'selected' : ''}>${y}</option>`).join('')}</select></label>
         </div>
         <div class="row end"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary">Show</button></div></form>`, { onClose: () => resolve(result) });
@@ -149,7 +152,7 @@ export function pickMonth(current, { max = null } = {}) {
     const limit = () => { for (const o of form.m.options) o.disabled = !!max && `${form.y.value}-${String(o.value).padStart(2, '0')}` > max; if (form.m.selectedOptions[0]?.disabled) form.m.value = String(+max.slice(5)); };
     form.y.onchange = limit;
     limit();
-    form.onsubmit = (e) => { e.preventDefault(); result = `${form.y.value}-${String(form.m.value).padStart(2, '0')}`; s.close(); };
+    form.onsubmit = (e) => { e.preventDefault(); result = yearOnly ? form.y.value : `${form.y.value}-${String(form.m.value).padStart(2, '0')}`; s.close(); };
   });
 }
 
@@ -177,7 +180,9 @@ export async function drawChart(canvas, config) {
     const css = getComputedStyle(document.documentElement);
     window.Chart.defaults.color = css.getPropertyValue('--muted').trim() || '#666';
     window.Chart.defaults.borderColor = css.getPropertyValue('--line').trim() || '#ddd';
-    config.options = { responsive: true, maintainAspectRatio: false, ...config.options };
+    // no grow-in animation for people who ask for reduced motion
+    const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    config.options = { responsive: true, maintainAspectRatio: false, ...(still ? { animation: false } : {}), ...config.options };
     live.add(new window.Chart(canvas, config));
   } catch (e) {
     canvas.replaceWith(Object.assign(document.createElement('p'), { className: 'muted', textContent: 'Chart unavailable offline.' }));
@@ -188,7 +193,7 @@ export async function drawChart(canvas, config) {
 
 export const empty = (msg, sub = '') => `<div class="empty"><div class="empty-icon">${icon('note')}</div><p>${esc(msg)}</p>${sub ? `<p class="muted small">${sub}</p>` : ''}</div>`;
 
-export const progress = (pct, level = 'ok') => `<div class="bar ${level}" role="progressbar" aria-valuenow="${Math.round(pct)}" aria-valuemin="0" aria-valuemax="100"><i style="width:${Math.min(100, pct)}%"></i></div>`;
+export const progress = (pct, level = 'ok', label = '') => `<div class="bar ${level}" role="progressbar"${label ? ` aria-label="${esc(label)}"` : ''} aria-valuenow="${Math.round(pct)}" aria-valuemin="0" aria-valuemax="100"><i style="width:${Math.min(100, pct)}%"></i></div>`;
 
 export const chip = (text, color) => `<span class="chip" ${color ? `style="--c:${esc(color)}"` : ''}>${esc(text)}</span>`;
 

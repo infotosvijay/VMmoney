@@ -48,7 +48,7 @@ function inHandCard(month) {
       <div class="inhand"><span class="muted small">${icon('online')} Online</span><b class="num ${h.online < 0 ? 'expense' : ''}">${money(h.online)}</b></div>
       <div class="inhand"><span class="muted small">${icon('cash')} Cash</span><b class="num ${h.cash < 0 ? 'expense' : ''}">${money(h.cash)}</b></div>
     </div>
-    ${past ? `<p class="muted small" style="margin:8px 0 0">As it stood at the end of ${esc(monthLabel(month, false))}.</p>` : ''}</div>`;
+    ${past ? `<span class="vh">As it stood at the end of ${esc(monthLabel(month, false))}.</span>` : ''}</div>`;
 }
 
 function familyCard(month) {
@@ -58,7 +58,7 @@ function familyCard(month) {
   const rows = FAMILY.map((f) => ({ f, v: spent(f.id), h: tx.inHand(f.id, upTo).total }));
   const total = rows.reduce((s, r) => s + r.v, 0);
   const other = otherMember(cfg.memberId);
-  return `<a class="card" href="#/reports?w=all" style="display:block;text-decoration:none;color:inherit">
+  return `<a class="card" href="#/reports?w=all&d=${month}" style="display:block;text-decoration:none;color:inherit">
     <div class="card-head"><h2>Family spending · ${esc(monthLabel(month, false))}</h2><span class="small">Details ›</span></div>
     <div class="stat" style="padding:0"><div class="label">Together</div><div class="value expense">${money(total)}</div></div>
     ${rows.map((r) => `<div class="row between small" style="margin-top:8px"><span class="pbadge" style="--c:${esc(r.f.color)}">${esc(r.f.name)}</span><span>Spent <b class="num">${money(r.v)}</b> · In hand <b class="num ${r.h < 0 ? 'expense' : ''}">${money(r.h)}</b></span></div>`).join('')}
@@ -83,9 +83,10 @@ async function homeScreen(root, ctx) {
     </div>
     ${inHandCard(month)}
     <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px">
-      <div class="card stat"><div class="label">Income</div><div class="value income">${money(tot.income)}</div></div>
-      <div class="card stat"><div class="label">Spending</div><div class="value expense">${money(tot.expense)}</div></div>
+      <a class="card stat tile" href="#/transactions?m=${month}&t=income"><div class="label">Income</div><div class="value income">${money(tot.income)}</div></a>
+      <a class="card stat tile" href="#/transactions?m=${month}&t=expense"><div class="label">Spending</div><div class="value expense">${money(tot.expense)}</div></a>
     </div>
+    <div class="row small muted" style="margin:-4px 2px 12px">Saved <b class="num ${tot.net >= 0 ? 'income' : 'expense'}">${money(tot.net)}</b> · Savings rate <b>${tot.income ? Math.round((tot.net / tot.income) * 100) + '%' : '–'}</b></div>
     ${alerts.length ? `<div class="card"><div class="card-head"><h2>Budget alerts</h2><a href="#/budgets" class="small">All budgets</a></div>
       ${alerts.map((a) => `<div style="margin-bottom:10px"><div class="row between small"><b>${esc(a.label)}</b>${a.level === 'over' ? `<span class="st over">${icon('alert')} Over by ${money(a.used - a.budget.limit)}</span>` : `<span class="st warn">${Math.round(a.pct)}% of ${money(a.budget.limit)}</span>`}</div>${progress(a.pct, a.level)}</div>`).join('')}</div>` : ''}
     ${familyCard(month)}
@@ -94,10 +95,10 @@ async function homeScreen(root, ctx) {
         ${top.length ? top.map((c) => `<div style="margin-bottom:10px"><div class="row between small"><span>${esc(c.icon)} ${esc(c.name)}</span><span class="num">${money(c.total)}</span></div>${progress((c.total / tot.expense) * 100)}</div>`).join('') : '<p class="muted">No spending in this month.</p>'}
       </div>
       <div class="card"><div class="card-head"><h2>Recent</h2><a href="#/transactions?m=${month}" class="small">See all</a></div>
-        ${recent.length ? `<div class="list">${recent.map((t) => txRow(t)).join('')}</div>` : empty('No entries in this month.', 'Tap <b>＋</b> to add one.')}
+        ${recent.length ? `<div class="list">${recent.map((t) => txRow(t)).join('')}</div>` : empty('No entries in this month.')}
       </div>
     </div>
-    <p style="text-align:center"><a class="btn primary" href="#/add">＋ Add entry</a></p>`;
+    <p style="text-align:center"><a class="btn primary" href="#/add">${icon('plus')} Add entry</a></p>`;
 
   const showMonth = (next) => {
     history.replaceState(history.state, '', next === cur ? '#/home' : `#/home?m=${next}`);
