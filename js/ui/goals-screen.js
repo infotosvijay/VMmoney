@@ -43,8 +43,8 @@ function goalSheet(existing, ctx) {
   const cur = existing || { name: '', target: '', saved: '', targetDate: '' };
   const s = sheet(existing ? 'Edit goal' : 'New goal', `<form class="stack">
     <label class="field"><span>Name</span><input name="name" maxlength="60" value="${esc(cur.name)}" placeholder="Goa trip" required></label>
-    <label class="field"><span>Target (${esc(cfg.currency || 'INR')})</span><input name="target" inputmode="decimal" data-calc autocomplete="off" value="${esc(cur.target)}" required></label>
-    <label class="field"><span>Saved so far</span><input name="saved" inputmode="decimal" data-calc autocomplete="off" value="${esc(cur.saved)}" placeholder="0"></label>
+    <label class="field"><span>Target (${esc(cfg.currency || 'INR')})</span><input name="target" inputmode="none" data-keypad autocomplete="off" value="${esc(cur.target)}" required></label>
+    <label class="field"><span>Saved so far</span><input name="saved" inputmode="none" data-keypad autocomplete="off" value="${esc(cur.saved)}" placeholder="0"></label>
     <label class="field"><span>Target date (optional)</span><input name="date" type="date" value="${esc(cur.targetDate)}"></label>
     <div class="row end"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary">Save</button></div></form>`);
   const f = $('form', s.el);

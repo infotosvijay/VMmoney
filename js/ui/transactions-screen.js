@@ -113,16 +113,22 @@ export async function transactionsScreen(root, ctx) {
         <select id="fcat" aria-label="Category">${catFilterOptions(f.c)}</select>
         <select id="facc" aria-label="Account"><option value="">All accounts</option>${accounts.map((a) => `<option value="${esc(a.id)}" ${f.a === a.id ? 'selected' : ''}>${esc(a.name)}${hub ? ` (${esc(tx.memberName(a.ownerId))})` : ''}</option>`).join('')}</select>
         ${hub ? `<select id="fmem" aria-label="Member">${memberOptions(tx.members(), f.u)}</select>` : ''}
-        <div class="chips" style="grid-column:1/-1" role="group" aria-label="Date presets">${PRESETS.map(([k, l]) => `<button type="button" data-preset="${k}" class="${activePreset(f) === k ? 'on' : ''}" aria-pressed="${activePreset(f) === k}">${l}</button>`).join('')}</div>
-        <label class="field"><span>From date</span><input id="fdf" type="date" value="${esc(f.df)}" max="2100-12-31"></label>
-        <label class="field"><span>To date</span><input id="fdt" type="date" value="${esc(f.dt)}" max="2100-12-31"></label>
+        <div class="chips date-chips date-row" style="grid-column:1/-1" role="group" aria-label="Date">${(() => {
+          // a day picked here (or a range from an old link / saved filter): only that date shows, with ✕ to go back to the presets
+          const own = (f.df || f.dt) && !activePreset(f);
+          const short = (d) => (d ? new Date(d + 'T00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '…');
+          const label = !own ? '' : f.df === f.dt ? short(f.df) : `${short(f.df)} – ${short(f.dt)}`;
+          const picker = `<label class="datebtn ${own ? 'on' : 'icon-only'}" title="Pick a date">${icon('calendar')}${label ? ` ${label}` : ''}<input id="fday" type="date" value="${esc(f.df === f.dt ? f.df : '')}" max="2100-12-31" aria-label="Pick a date"></label>`;
+          if (own) return `${picker}<button type="button" class="icon-only" data-cleardate aria-label="Clear the date">${icon('close')}</button>`;
+          return PRESETS.map(([k, l]) => `<button type="button" data-preset="${k}" class="${activePreset(f) === k ? 'on' : ''}" aria-pressed="${activePreset(f) === k}">${l}</button>`).join('') + picker;
+        })()}</div>
         <div class="row" style="grid-column:1/-1">
           <select id="fsaved" class="grow" aria-label="Saved filters"><option value="">Saved filters…</option>${(cfg.savedFilters || []).map((s) => `<option value="${esc(s.id)}" ${s.id === savedPick ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>
           <button type="button" class="btn small" data-savef ${activeCount ? '' : 'disabled'}>Save this</button>
           <button type="button" class="btn small" data-delf ${savedPick ? '' : 'disabled'}>Delete</button>
         </div>
-        <input id="fmin" type="number" inputmode="decimal" placeholder="Min amount" value="${esc(f.min)}" aria-label="Minimum amount">
-        <input id="fmax" type="number" inputmode="decimal" placeholder="Max amount" value="${esc(f.max)}" aria-label="Maximum amount">
+        <input id="fmin" type="text" inputmode="none" data-keypad autocomplete="off" placeholder="Min amount" value="${esc(f.min)}" aria-label="Minimum amount">
+        <input id="fmax" type="text" inputmode="none" data-keypad autocomplete="off" placeholder="Max amount" value="${esc(f.max)}" aria-label="Maximum amount">
       </div></details>
       <div class="row between" id="tx-bottom">${bottomHTML()}
       </div>
@@ -149,8 +155,9 @@ export async function transactionsScreen(root, ctx) {
   $('#fmem', root)?.addEventListener('change', (e) => setF({ u: e.target.value }));
   // Any date range switches the period to "All time". Emptying both dates goes back to the month.
   const setDates = (df, dt) => setF(df || dt ? { df, dt, m: 'all' } : { df: '', dt: '', m: thisMonth() });
-  $('#fdf', root).onchange = (e) => setDates(e.target.value, f.dt);
-  $('#fdt', root).onchange = (e) => setDates(f.df, e.target.value);
+  const day = $('#fday', root);
+  day.onclick = () => { try { day.showPicker?.(); } catch { /* ignore */ } };
+  day.onchange = (e) => setDates(e.target.value, e.target.value);
   const saved = $('#fsaved', root);
   saved.onchange = () => {
     const s = (cfg.savedFilters || []).find((x) => x.id === saved.value);
@@ -183,6 +190,7 @@ export async function transactionsScreen(root, ctx) {
     if ('clear' in b.dataset) { savedPick = ''; setF(BLANK); }
     else if (b.dataset.rm) setF(Object.fromEntries(b.dataset.rm.split(',').map((k) => [k, ''])));
     else if (b.dataset.preset) setF({ ...presetRange(b.dataset.preset), m: 'all' });
+    else if ('cleardate' in b.dataset) setF({ df: '', dt: '', m: thisMonth() });
     else if (b.dataset.day) setF({ df: b.dataset.day, dt: b.dataset.day, m: 'all' });
     else if ('savef' in b.dataset) {
       const name = await promptDialog({ title: 'Save this filter', label: 'Name', help: 'Saved on this device. Pick it later from "Saved filters".' });

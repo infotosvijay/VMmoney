@@ -26,7 +26,7 @@ function sanitize(v) {
   return v.slice(0, 13);
 }
 const moneyInput = (field, id, val, label, extra = '') => `<label class="money"><span class="vh">${esc(label)}</span><span class="cur">₹</span>
-  <input class="money-in" type="text" inputmode="decimal" data-calc autocomplete="off" placeholder="0" data-f="${field}" ${id ? `data-id="${esc(id)}"` : ''} value="${plain(val)}" ${extra}></label>`;
+  <input class="money-in" type="text" inputmode="none" data-keypad autocomplete="off" placeholder="0" data-f="${field}" ${id ? `data-id="${esc(id)}"` : ''} value="${plain(val)}" ${extra}></label>`;
 
 // The balance your entries say (Online + Cash from the transactions), shown in brackets beside what the banks / cash really hold.
 const hasEntries = () => db.live('transactions').length > 0;

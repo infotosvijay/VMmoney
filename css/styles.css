@@ -226,8 +226,17 @@ button.list-item:hover, a.list-item:hover { background: var(--tint); }
 
 .empty { text-align: center; padding: 28px 12px; color: var(--muted); }
 .empty-icon { font-size: 2rem; }
-.banner { padding: 10px 14px; border-radius: 12px; margin-bottom: 14px; background: color-mix(in srgb, var(--warn) 16%, var(--card)); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); }
-.banner.info { background: var(--brand-soft); border-color: transparent; }
+/* Banners are frosted glass like the cards; a coloured edge says what kind (amber = needs attention, blue = info) */
+.banner {
+  padding: 12px 14px 12px 16px; border-radius: 14px; margin-bottom: 14px; background: var(--glass);
+  border: 1px solid var(--glass-border); border-left: 4px solid var(--warn);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(160%); backdrop-filter: blur(var(--blur)) saturate(160%);
+  box-shadow: inset 0 1px 0 var(--glass-hi), var(--glass-shadow);
+}
+.banner.info { border-left-color: var(--brand); }
+.banner > b:first-of-type { display: flex; align-items: center; gap: 8px; }
+.banner > b:first-of-type svg.i { color: var(--warn); }
+.banner.info > b:first-child svg.i { color: var(--brand); }
 .banner .row { margin-top: 6px; }
 
 table.tbl { width: 100%; border-collapse: collapse; font-size: var(--fs-md); }
@@ -396,20 +405,6 @@ html, body { overscroll-behavior-x: none; }
 .fold { display: inline-block; font-size: .75em; color: var(--muted); transition: transform .15s; }
 [aria-expanded="true"] .fold { transform: rotate(90deg); }
 
-/* ---------- calculator bar above the keyboard (inputs with data-calc) ---------- */
-.calc-bar {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 90; display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
-  padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); background: var(--card); border-top: 1px solid var(--line);
-  box-shadow: 0 -4px 14px rgba(0,0,0,.12);
-}
-.calc-bar[hidden] { display: none; }
-.calc-bar button {
-  flex: 1 1 0; min-width: 0; max-width: 64px; height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--tint); color: var(--text);
-  font-size: 1.2rem; font-weight: 650; cursor: pointer; touch-action: manipulation;
-}
-.calc-bar button[data-k="="] { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
-.calc-bar .calc-out { order: -1; flex-basis: 100%; text-align: right; padding: 0 4px; font-weight: 650; color: var(--brand); }
-.calc-bar .calc-out:empty { display: none; }
 
 /* v1.19 filters */
 .active-chips:empty { display: none; }
@@ -500,3 +495,49 @@ html, body { overscroll-behavior-x: none; }
 .icon-btn[disabled] { opacity: .3; cursor: default; }
 .seg button svg.i { width: 16px; height: 16px; vertical-align: -3px; }
 @media (prefers-reduced-motion: reduce) { .fold { transition: none; } }
+
+/* Desktop polish */
+.tbl th { background: var(--header); -webkit-backdrop-filter: blur(var(--blur)); backdrop-filter: blur(var(--blur)); }
+@media (min-width: 900px) {
+  #view > form#f { max-width: 720px; margin: 0 auto; }
+}
+
+/* Banners: close (comes back next time the app opens) */
+.banner { position: relative; }
+.banner > b:first-of-type { padding-right: 36px; }
+.banner-x { position: absolute; top: 2px; right: 2px; color: var(--muted); }
+
+/* In-app number pad for amounts (touch screens) */
+.kpad {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  background: var(--header); border-top: 1px solid var(--glass-border); box-shadow: 0 -8px 24px rgba(0, 0, 0, .12);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(180%); backdrop-filter: blur(var(--blur)) saturate(180%);
+}
+.kpad[hidden] { display: none; }
+.kpad-out { text-align: right; font-weight: 650; color: var(--brand); min-height: 1.4em; padding: 0 8px 6px; max-width: 520px; margin: 0 auto; }
+.kpad-out:empty { display: none; }
+.kpad-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; max-width: 520px; margin: 0 auto; }
+.kpad-grid button {
+  height: 52px; border-radius: 12px; border: 1px solid var(--glass-border); background: var(--field); color: var(--text);
+  font-size: 1.375rem; font-weight: 600; display: grid; place-items: center; touch-action: manipulation; cursor: pointer;
+}
+.kpad-grid button.op { background: var(--tint); color: var(--brand); }
+.kpad-grid button.done { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); font-size: 1rem; }
+.kpad-grid button:active { transform: scale(.96); }
+.kpad-grid button svg.i { width: 24px; height: 24px; }
+body.kpad-open #main-col { padding-bottom: calc(var(--kpad-h, 300px) + 16px); }
+body.kpad-open #toasts { bottom: calc(var(--kpad-h, 300px) + 12px); }
+@media (prefers-reduced-motion: reduce) { .kpad-grid button:active { transform: none; } }
+body.kpad-open #tabbar { visibility: hidden; }
+
+/* Filters: Today · Yesterday · This week · [date] in one row */
+.date-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.date-row::-webkit-scrollbar { display: none; }
+.date-row { gap: 5px; }
+.date-row > * { flex: none; padding-left: 9px; padding-right: 9px; }
+.date-row .datebtn { gap: 4px; }
+.date-chips .datebtn.icon-only, .date-row > button.icon-only { width: 44px; min-width: 44px; padding: 0; justify-content: center; }
+/* In a sheet the pad becomes the sheet's bottom part, so the box being typed in stays visible above it */
+dialog .kpad { position: static; box-shadow: none; border-radius: 0; }
+dialog.sheet:has(.kpad:not([hidden])) .sheet-body { max-height: calc(88vh - 56px - var(--kpad-h, 300px)); padding-bottom: 12px; }

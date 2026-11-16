@@ -207,7 +207,7 @@ function budgetSheet(existing, { hub }, ctx) {
       <label class="field" id="memwrap"><span>Member</span><select name="member">${members.map((m) => `<option value="${esc(m.id)}" ${m.id === cur.memberId ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></label>` : ''}
     <label class="field"><span>Category</span><select name="cat" required><option value="">Choose…</option>${tree.map((x) => `<option value="${esc(x.cat.id)}" ${x.cat.id === cur.categoryId ? 'selected' : ''}>${esc(x.cat.icon)} ${esc(x.cat.name)}</option>`).join('')}</select></label>
     <label class="field"><span>Subcategory (optional)</span><select name="sub"></select></label>
-    <label class="field"><span>Monthly limit (${esc(cfg.currency || 'INR')})</span><input name="limit" type="text" inputmode="decimal" data-calc autocomplete="off" value="${esc(cur.limit)}" required></label>
+    <label class="field"><span>Monthly limit (${esc(cfg.currency || 'INR')})</span><input name="limit" type="text" inputmode="none" data-keypad autocomplete="off" value="${esc(cur.limit)}" required></label>
     <div class="row end"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary">Save</button></div></form>`);
   const f = $('form', s.el);
   const fillSubs = () => {
@@ -279,7 +279,7 @@ function recurringSheet(r, ctx) {
   const s = sheet('Edit recurring entry', `<form class="stack">
     ${isT ? '' : `<label class="field"><span>Category</span><select name="cat" required>${tree.map((x) => `<option value="${esc(x.cat.id)}" ${x.cat.id === t.categoryId ? 'selected' : ''}>${esc(x.cat.icon)} ${esc(x.cat.name)}</option>`).join('')}</select></label>
     <label class="field"><span>Subcategory (optional)</span><select name="sub"></select></label>`}
-    <label class="field"><span>Amount (${esc(cfg.currency || 'INR')})</span><input name="amount" type="text" inputmode="decimal" data-calc autocomplete="off" value="${esc(t.amount)}" required></label>
+    <label class="field"><span>Amount (${esc(cfg.currency || 'INR')})</span><input name="amount" type="text" inputmode="none" data-keypad autocomplete="off" value="${esc(t.amount)}" required></label>
     <label class="field"><span>Note</span><input name="note" maxlength="200" value="${esc(t.note || '')}"></label>
     <label class="field"><span>Repeats</span><select name="freq">${FREQUENCIES.map(([v, l]) => `<option value="${v}" ${v === r.frequency ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
     <label class="field"><span>Next date</span><input name="next" type="date" value="${esc(r.nextDate)}" required></label>

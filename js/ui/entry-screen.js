@@ -7,7 +7,7 @@ import * as cats from '../categories.js';
 import * as tx from '../transactions.js';
 import * as recurring from '../recurring.js';
 import * as budgets from '../budgets.js';
-import { $, $$, toast, undoToast, promptDialog, sheet, empty, evalAmount, money } from './components.js';
+import { $, $$, toast, undoToast, promptDialog, sheet, empty, evalAmount, money, openKeypad } from './components.js';
 import { icon } from './icons.js';
 
 const yesterday = () => { const d = new Date(); d.setDate(d.getDate() - 1); return localDate(d); };
@@ -50,7 +50,7 @@ export async function entryScreen(root, ctx) {
       <div class="card-head"><b>Split across categories</b></div>
       ${st.split.map((l, i) => `<div class="row" style="flex-wrap:nowrap">
         <select data-sl-cat="${i}" class="grow" aria-label="Category for line ${i + 1}">${splitOptions(l.cat)}</select>
-        <input data-sl-amt="${i}" data-calc inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(l.amount)}" aria-label="Amount for line ${i + 1}" style="max-width:120px">
+        <input data-sl-amt="${i}" data-keypad inputmode="none" autocomplete="off" placeholder="0" value="${esc(l.amount)}" aria-label="Amount for line ${i + 1}" style="max-width:120px">
         ${st.split.length > 2 ? `<button type="button" class="btn small" data-sl-del="${i}" aria-label="Remove line ${i + 1}">${icon('close')}</button>` : ''}
       </div>`).join('')}
       <div class="row between"><button type="button" class="btn small" data-sl-add>${icon('plus')} Add line</button><b>Total <span class="num" id="split-total">${money(splitTotal())}</span></b></div>
@@ -81,7 +81,7 @@ export async function entryScreen(root, ctx) {
         ${mT ? `<div class="seg"><button type="button" data-dir="out" class="${st.direction === 'in' ? '' : 'on'}">${icon('arrowUp')} I paid ${esc(other.name)}</button><button type="button" data-dir="in" class="${st.direction === 'in' ? 'on' : ''}">${icon('arrowDown')} ${esc(other.name)} paid me</button></div>` : ''}` : ''}
         ${st.split && !isT ? '' : `<label class="card amount-card ${st.type}-t ${invalid === 'amount' ? 'invalid' : ''}" style="display:block;margin-bottom:0">
           <span class="lbl">Amount</span>
-          <input id="amount" class="amount-input" inputmode="decimal" data-calc autocomplete="off" placeholder="0" value="${esc(st.amount)}" aria-label="Amount (${esc(cfg.currency || 'INR')})" ${invalid === 'amount' ? 'aria-invalid="true"' : ''}>
+          <input id="amount" class="amount-input" inputmode="none" data-keypad autocomplete="off" placeholder="0" value="${esc(st.amount)}" aria-label="Amount (${esc(cfg.currency || 'INR')})" ${invalid === 'amount' ? 'aria-invalid="true"' : ''}>
         </label>`}
         ${isT ? '' : st.split ? splitHTML() : `
         <div id="cat-block" class="${invalid === 'category' ? 'invalid' : ''}">
@@ -160,6 +160,7 @@ export async function entryScreen(root, ctx) {
       Object.assign(st, { amount: '', note: '', repeat: '', subcategoryId: null, split: st.split ? st.split.map(() => ({ cat: '', amount: '' })) : null });
       draw();
       window.scrollTo({ top: 0, behavior: 'smooth' }); // ready for the next category
+      { const a = $('#amount', root); a?.focus({ preventScroll: true }); openKeypad(a); }
     } else (existing || ctx.params.get('date')) && history.length > 1 ? history.back() : ctx.go('transactions');
   }
 
@@ -256,4 +257,6 @@ export async function entryScreen(root, ctx) {
   }
 
   draw();
+  // a new entry starts with the amount: the number pad opens straight away
+  if (!existing) { const a = $('#amount', root); a?.focus({ preventScroll: true }); openKeypad(a); }
 }

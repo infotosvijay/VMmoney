@@ -9,7 +9,7 @@ import * as recurring from './recurring.js';
 import * as sync from './sync.js';
 import * as hubfile from './hubfile.js';
 import * as lock from './lock.js';
-import { $, consumeSlide, applyTheme, installCalc, toast, pickFiles, promptDialog, pickDialog, destroyCharts, sheet, shareOrDownload } from './ui/components.js';
+import { $, consumeSlide, applyTheme, installKeypad, closeBanner, toast, pickFiles, promptDialog, pickDialog, destroyCharts, sheet, shareOrDownload } from './ui/components.js';
 import { icon } from './ui/icons.js';
 import { memberRoutes, memberNav } from './ui/member-screens.js';
 import { hubRoutes, hubNav } from './ui/hub-screens.js';
@@ -27,7 +27,7 @@ async function main() {
     return;
   }
   applyTheme();
-  installCalc();
+  installKeypad();
   registerServiceWorker();
   setupInstall();
 
@@ -144,6 +144,8 @@ function highlightNav(id) {
 }
 
 async function onGlobalClick(e) {
+  const x = e.target.closest('[data-dismiss]');
+  if (x) { closeBanner(x.dataset.dismiss); x.closest('.banner')?.remove(); return; }
   if (e.target.closest('[data-more]')) {
     const rest = current.nav.filter((n) => !n.tab);
     sheet('More', `<div class="list">${rest.map((n) => `<a class="list-item" href="#/${n.id}" data-close><span class="avatar">${icon(n.ico)}</span><span class="main">${esc(n.label)}</span></a>`).join('')}</div>`);

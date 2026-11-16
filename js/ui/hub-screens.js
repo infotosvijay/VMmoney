@@ -11,7 +11,7 @@ import * as sync from '../sync.js';
 import * as hubfile from '../hubfile.js';
 import * as live from '../livesync.js';
 import { qrSvg } from './qr.js';
-import { $, $$, money, toast, confirmDialog, promptDialog, pickFiles, shareOrDownload, empty, progress, relTime, daysSince, drawChart, cssVar, sheet, onSwipe, monthTitle, pickMonth } from './components.js';
+import { $, $$, money, toast, confirmDialog, promptDialog, pickFiles, shareOrDownload, empty, progress, relTime, daysSince, drawChart, cssVar, sheet, onSwipe, monthTitle, pickMonth , bannerX, bannerClosed } from './components.js';
 import { icon } from './icons.js';
 import { entryScreen } from './entry-screen.js';
 import { transactionsScreen } from './transactions-screen.js';
@@ -47,13 +47,13 @@ async function dashboardScreen(root, ctx) {
   const others = tx.members().filter((m) => m.id !== cfg.memberId);
 
   root.innerHTML = `
-    ${hubfile.supported && !hubfile.status.linked ? `<div class="banner"><b>Link your master file</b><p class="small">Save everything to a family.json on this computer so nothing is ever lost.</p><div class="row"><a class="btn primary small" href="#/masterfile">Set up</a></div></div>` : ''}
+    ${hubfile.supported && !hubfile.status.linked && !bannerClosed('masterfile') ? `<div class="banner">${bannerX('masterfile')}<b>${icon('save')} Link your master file</b><p class="small">Save everything to a family.json on this computer so nothing is ever lost.</p><div class="row"><a class="btn primary small" href="#/masterfile">Set up</a></div></div>` : ''}
     <div class="row between" style="margin-bottom:12px">
       <button class="btn icon" data-mnav="-1" aria-label="Previous month">${icon('left')}</button>
       ${monthTitle(monthLabel(month))}
       <button class="btn icon" data-mnav="1" aria-label="Next month" ${month >= cur ? 'disabled' : ''}>${icon('right')}</button>
     </div>
-    ${pend ? `<div class="banner info"><b>${pend} new ${pend === 1 ? 'category' : 'categories'} to review</b><div class="row"><a class="btn small primary" href="#/categories">Review</a></div></div>` : ''}
+    ${pend && !bannerClosed('review') ? `<div class="banner info">${bannerX('review')}<b>${pend} new ${pend === 1 ? 'category' : 'categories'} to review</b><div class="row"><a class="btn small primary" href="#/categories">Review</a></div></div>` : ''}
     <div class="grid stats">
       <div class="card stat"><div class="label">Family income · ${esc(monthLabel(month, false))}</div><div class="value income">${money(tot.income)}</div></div>
       <div class="card stat"><div class="label">Family expense</div><div class="value expense">${money(tot.expense)}</div></div>

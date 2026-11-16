@@ -67,7 +67,7 @@ export function confirmDialog(message, { okText = 'OK', danger = false, title = 
 export function promptDialog({ title, label, value = '', type = 'text', okText = 'Save', help = '' }) {
   return new Promise((resolve) => {
     let result = null;
-    const s = sheet(title, `<form class="stack"><label class="field"><span>${esc(label)}</span><input name="v" type="${type === 'number' ? 'text' : type}" value="${esc(value)}" autocomplete="off" ${type === 'number' ? 'inputmode="decimal" data-calc' : ''} required></label>${help ? `<p class="muted small">${esc(help)}</p>` : ''}<div class="row end"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary">${esc(okText)}</button></div></form>`, { onClose: () => resolve(result) });
+    const s = sheet(title, `<form class="stack"><label class="field"><span>${esc(label)}</span><input name="v" type="${type === 'number' ? 'text' : type}" value="${esc(value)}" autocomplete="off" ${type === 'number' ? 'inputmode="none" data-keypad' : ''} required></label>${help ? `<p class="muted small">${esc(help)}</p>` : ''}<div class="row end"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary">${esc(okText)}</button></div></form>`, { onClose: () => resolve(result) });
     const form = s.el.querySelector('form');
     form.onsubmit = (e) => {
       e.preventDefault();
@@ -205,14 +205,20 @@ export function relTime(iso) {
 export const daysSince = (iso) => (iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 86400000) : Infinity);
 
 // ---- banners shown on the phone landing page ----
+// A closed banner stays away until the app is opened again (kept in memory only, never saved).
+const closedBanners = new Set();
+export const bannerClosed = (key) => closedBanners.has(key);
+export const closeBanner = (key) => closedBanners.add(key);
+export const bannerX = (key) => `<button type="button" class="icon-btn banner-x" data-dismiss="${esc(key)}" aria-label="Close">${icon('close')}</button>`;
+
 export function installBanner() {
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
-  if (standalone || cfg.installDismissed) return '';
+  if (standalone || cfg.installDismissed || bannerClosed('install')) return '';
   if (window.__installPrompt) {
-    return `<div class="banner info"><b>Install this app</b><p class="small">Add it to your home screen: it opens full-screen, works offline, and your data is better protected.</p><div class="row"><button class="btn primary small" data-action="install">Install</button><button class="btn small" data-action="dismiss-install">Not now</button></div></div>`;
+    return `<div class="banner info">${bannerX('install')}<b>${icon('download')} Install this app</b><p class="small">Add it to your home screen: it opens full-screen, works offline, and your data is better protected.</p><div class="row"><button class="btn primary small" data-action="install">Install</button><button class="btn small" data-action="dismiss-install">Not now</button></div></div>`;
   }
   if (/iphone|ipad|ipod/i.test(navigator.userAgent)) {
-    return `<div class="banner info"><b>Install this app</b><p class="small">Tap the Share button in Safari, then “Add to Home Screen”. Installed apps keep their data safely.</p><div class="row"><button class="btn small" data-action="dismiss-install">Got it</button></div></div>`;
+    return `<div class="banner info">${bannerX('install')}<b>${icon('download')} Install this app</b><p class="small">Tap the Share button in Safari, then “Add to Home Screen”. Installed apps keep their data safely.</p><div class="row"><button class="btn small" data-action="dismiss-install">Got it</button></div></div>`;
   }
   return '';
 }
@@ -221,8 +227,8 @@ export function installBanner() {
 /** "Sync with the other phone" nudge when there are changes and the last phone-to-phone sync is a week old. */
 export function syncReminder(changedSince, other) {
   const last = cfg.peerSyncAt?.[other?.id];
-  if (!changedSince || !other || daysSince(last) < 7) return '';
-  return `<div class="banner"><b>Time to sync with ${esc(other.name)}'s phone</b><p class="small">Last synced ${esc(relTime(last))}. Keeps both phones up to date.</p><div class="row"><a class="btn primary small" href="#/sync">Sync now</a></div></div>`;
+  if (!changedSince || !other || daysSince(last) < 7 || bannerClosed('sync')) return '';
+  return `<div class="banner">${bannerX('sync')}<b>${icon('sync')} Time to sync with ${esc(other.name)}'s phone</b><p class="small">Last synced ${esc(relTime(last))}. Keeps both phones up to date.</p><div class="row"><a class="btn primary small" href="#/sync">Sync now</a></div></div>`;
 }
 
 // ---- swipe between tabs (touch screens) ----
@@ -291,23 +297,37 @@ export const hasMath = (s) => /\d\s*[-+*/×xX÷−–]|^\s*\(/.test(String(s));
 
 const roundAmt = (v) => String(Math.round(v * 100) / 100);
 
+// ---------------------------------------------------------------- in-app number pad for amounts
+
+const coarse = () => matchMedia('(pointer: coarse)').matches;
+let keypadShow = null;
+/** Open the pad for `el` straight away (a focus event alone is not sent while the window is in the background). */
+export const openKeypad = (el) => { if (el && keypadShow && coarse() && el.matches('[data-keypad]')) keypadShow(el); };
+
 /**
- * Any <input data-calc> gets a bar above the keyboard with + − × ÷ ( ) = and the running result,
- * since a phone's number keyboard often has no operator keys. Leaving the box replaces the sum with its result.
+ * Every amount box (<input data-keypad>) on a touch screen gets the app's own number pad instead of the phone keyboard:
+ * digits, . ⌫ ( ) + − × ÷, = (works the sum out) and Done. The running result shows above the keys.
+ * Pair it with inputmode="none" so the phone keyboard stays closed. On a laptop it is ignored (type as usual).
  * Call once at start-up; it works for inputs drawn later too.
  */
-export function installCalc() {
-  const bar = document.createElement('div');
-  bar.className = 'calc-bar';
-  bar.hidden = true;
-  bar.innerHTML = `${['+', '−', '×', '÷', '(', ')'].map((k) => `<button type="button" data-k="${k}">${k}</button>`).join('')}<button type="button" data-k="=">=</button><span class="calc-out num" aria-live="polite"></span>`;
-  const out = bar.querySelector('.calc-out');
+export function installKeypad() {
+  const KEYS = [
+    ['(', '(', 'op'], [')', ')', 'op'], ['back', icon('backspace'), 'op', 'Delete'], ['÷', '÷', 'op', 'Divide'],
+    ['7'], ['8'], ['9'], ['×', '×', 'op', 'Times'],
+    ['4'], ['5'], ['6'], ['−', '−', 'op', 'Minus'],
+    ['1'], ['2'], ['3'], ['+', '+', 'op', 'Plus'],
+    ['.', '.', '', 'Point'], ['0'], ['=', '=', 'op', 'Work it out'], ['done', 'Done', 'done'],
+  ];
+  const pad = document.createElement('div');
+  pad.className = 'kpad';
+  pad.hidden = true;
+  pad.setAttribute('role', 'group');
+  pad.setAttribute('aria-label', 'Amount keypad');
+  pad.innerHTML = `<div class="kpad-out num" aria-live="polite"></div><div class="kpad-grid">${KEYS.map(([k, label = k, cls = '', aria = '']) =>
+    `<button type="button" data-kp="${esc(k)}" class="${cls}" ${aria ? `aria-label="${esc(aria)}"` : ''}>${label}</button>`).join('')}</div>`;
+  const out = pad.querySelector('.kpad-out');
   let cur = null;
 
-  const place = () => {
-    const vv = window.visualViewport;
-    bar.style.bottom = vv ? `${Math.max(0, window.innerHeight - vv.height - vv.offsetTop)}px` : '0px';
-  };
   const preview = () => {
     if (!cur) return;
     const v = evalAmount(cur.value);
@@ -317,18 +337,42 @@ export function installCalc() {
     const v = evalAmount(el.value);
     if (hasMath(el.value) && !Number.isNaN(v)) { el.value = roundAmt(v); el.dispatchEvent(new Event('input', { bubbles: true })); }
   };
+  const hide = () => {
+    pad.hidden = true;
+    document.body.classList.remove('kpad-open');
+    cur = null;
+  };
+  const show = (el) => {
+    cur = el;
+    (el.closest('dialog') || document.body).appendChild(pad);
+    pad.hidden = false;
+    document.body.classList.add('kpad-open');
+    document.documentElement.style.setProperty('--kpad-h', `${pad.offsetHeight}px`);
+    const end = el.value.length;
+    try { el.setSelectionRange(end, end); } catch { /* ignore */ }
+    preview();
+    requestAnimationFrame(() => {
+      if (el.closest('dialog')) { el.scrollIntoView({ block: 'nearest' }); return; }
+      const r = el.getBoundingClientRect();
+      if (r.bottom > window.innerHeight - pad.offsetHeight - 12) el.scrollIntoView({ block: 'center' });
+    });
+  };
 
-  // keep the focus (and the keyboard) in the amount box while tapping the bar
-  bar.addEventListener('pointerdown', (e) => e.preventDefault());
-  bar.addEventListener('mousedown', (e) => e.preventDefault());
-  bar.addEventListener('click', (e) => {
-    const k = e.target.closest('[data-k]')?.dataset.k;
+  keypadShow = show;
+  // keep the focus (and the caret) in the amount box while tapping keys
+  pad.addEventListener('pointerdown', (e) => e.preventDefault());
+  pad.addEventListener('mousedown', (e) => e.preventDefault());
+  pad.addEventListener('click', (e) => {
+    const k = e.target.closest('[data-kp]')?.dataset.kp;
     if (!k || !cur) return;
+    if (!cur.isConnected) return hide();
+    try { navigator.vibrate?.(8); } catch { /* no vibration: fine */ }
+    if (k === 'done') { settle(cur); cur.blur(); return; }
     if (k === '=') settle(cur);
     else {
-      const ch = { '−': '-', '×': '*', '÷': '/' }[k] || k;
       const a = cur.selectionStart ?? cur.value.length, b = cur.selectionEnd ?? a;
-      cur.setRangeText(ch, a, b, 'end');
+      if (k === 'back') { if (a !== b) cur.setRangeText('', a, b, 'end'); else if (a > 0) cur.setRangeText('', a - 1, a, 'end'); }
+      else cur.setRangeText(k, a, b, 'end');
       cur.dispatchEvent(new Event('input', { bubbles: true }));
     }
     preview();
@@ -336,20 +380,16 @@ export function installCalc() {
 
   document.addEventListener('focusin', (e) => {
     const el = e.target;
-    if (!el.matches?.('input[data-calc]')) return;
-    cur = el;
-    (el.closest('dialog') || document.body).appendChild(bar); // a modal sheet makes the page behind it untappable
-    bar.hidden = false;
-    place();
-    preview();
+    if (el.matches?.('input[data-keypad]') && coarse()) show(el);
+    else if (cur && !pad.contains(el)) hide();
   });
   document.addEventListener('focusout', (e) => {
-    if (e.target !== cur) return;
-    settle(cur);
-    cur = null;
-    bar.hidden = true;
+    if (!e.target.matches?.('input[data-keypad]')) return;
+    settle(e.target); // "1200+980" becomes 2180 when you leave the box
+    if (e.target === cur) setTimeout(() => { if (cur && document.activeElement !== cur) hide(); }, 0);
   });
   document.addEventListener('input', (e) => { if (e.target === cur) preview(); });
-  window.visualViewport?.addEventListener('resize', place);
-  window.visualViewport?.addEventListener('scroll', place);
+  // the screen was redrawn or changed: a pad without its box makes no sense
+  document.addEventListener('pointerdown', (e) => { if (cur && !pad.contains(e.target) && e.target !== cur) setTimeout(() => { if (cur && (document.activeElement !== cur || !cur.isConnected)) hide(); }, 0); }, true);
+  window.addEventListener('hashchange', hide);
 }

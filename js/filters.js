@@ -8,7 +8,8 @@ export const SAVED_KEYS = ['q', 't', 'c', 'a', 'u', 'min', 'max', 'df', 'dt'];
 
 export const BLANK = { q: '', t: '', c: '', a: '', u: '', min: '', max: '', df: '', dt: '' };
 
-export const PRESETS = [['today', 'Today'], ['yesterday', 'Yesterday'], ['week', 'This week'], ['last30', 'Last 30 days']];
+export const PRESETS = [['today', 'Today'], ['yesterday', 'Yesterday'], ['week', 'This week']];
+// 'last30' still works in presetRange for links and saved filters made before it left the screen
 
 const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
 const shift = (d, days) => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate() + days); return localDate(x); };
