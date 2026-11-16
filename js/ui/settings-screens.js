@@ -9,7 +9,8 @@ import * as budgets from '../budgets.js';
 import * as recurring from '../recurring.js';
 import * as lock from '../lock.js';
 import * as csv from '../csvimport.js';
-import { onSwipe, $, $$, money, toast, pickFiles, sheet, confirmDialog, promptDialog, pickDialog, empty, progress, applyTheme, relTime, evalAmount } from './components.js';
+import { onSwipe, $, $$, money, toast, pickFiles, sheet, confirmDialog, promptDialog, pickDialog, empty, progress, applyTheme, relTime, evalAmount, undoToast } from './components.js';
+import { icon } from './icons.js';
 
 const VERSION = self.APP_VERSION || 'dev';
 const fmem = () => familyMember(cfg.memberId);
@@ -18,6 +19,7 @@ const fmem = () => familyMember(cfg.memberId);
 
 let catType = 'expense';
 let showArchived = false;
+let reordering = false; // Reorder mode: up/down arrows on every row instead of the ⋯ menu
 
 // Main categories the user has opened. Groups start folded so long lists stay short; remembered on this device.
 const OPEN_KEY = 'vmm.catOpen';
@@ -35,20 +37,25 @@ export async function categoriesScreen(root, ctx, { hub = false } = {}) {
       <p class="muted small">Created by family members. Accept, rename or merge each one, then send the cleaned list in the next family package.</p>
       <div class="list">${pend.map((c) => `<div class="list-item"><span class="avatar">${esc(cats.icon(c))}</span><span class="main"><span class="title">${esc(catLabel(c))}</span><span class="sub">${esc(c.type)} · by ${esc(tx.memberName(c.createdBy))} · ${cats.usageCount(c.id)} entries</span></span>
         <span class="row"><button class="btn small primary" data-accept="${esc(c.id)}">Accept</button><button class="btn small" data-act="${esc(c.id)}">…</button></span></div>`).join('')}</div></div>` : ''}
-    <div class="row between" style="margin-bottom:12px">
-      <div class="seg" style="min-width:200px"><button data-ct="expense" class="${catType === 'expense' ? 'on' : ''}">Expense</button><button data-ct="income" class="${catType === 'income' ? 'on' : ''}">Income</button></div>
-      <div class="row"><label class="check small"><input type="checkbox" id="arch" ${showArchived ? 'checked' : ''}> Show archived</label><button class="btn small" data-foldall>${tree.some(({ cat }) => openCats.has(cat.id)) ? 'Collapse all' : 'Expand all'}</button><button class="btn primary small" data-addmain>+ Category</button></div>
+    <div class="row between" style="margin-bottom:12px;flex-wrap:nowrap">
+      <div class="seg grow"><button data-ct="expense" class="${catType === 'expense' ? 'on' : ''}">Expense</button><button data-ct="income" class="${catType === 'income' ? 'on' : ''}">Income</button></div>
+      ${reordering ? '<button type="button" class="btn primary" data-reorder>Done</button>' : `<button type="button" class="btn" data-reorder>${icon('reorder')} Reorder</button>`}
     </div>
-    ${tree.length ? tree.map(({ cat, subs }) => `
-      <div class="card" style="padding:6px 12px">
+    ${reordering ? '' : `<div class="row between" style="margin:-4px 0 8px">
+      <button type="button" class="btn ghost" data-addmain style="padding-left:4px">${icon('plus')} Category</button>
+      <button type="button" class="btn ghost" data-arch aria-pressed="${showArchived}" style="color:var(--text)">${showArchived ? `${icon('check')} ` : ''}Show archived</button>
+    </div>`}
+    ${tree.length ? tree.map(({ cat, subs }, i) => `
+      <div class="card" style="padding:4px 8px 4px 12px">
         <div class="list-item" style="border:0">
           <span class="avatar" style="background:color-mix(in srgb, ${esc(cat.color)} 20%, transparent)">${esc(cat.icon || '🏷️')}</span>
-          <span class="main" data-fold="${esc(cat.id)}" role="button" tabindex="0" aria-expanded="${openCats.has(cat.id)}" style="cursor:pointer"><span class="title"><span class="fold" aria-hidden="true">▸</span> ${esc(cat.name)} ${cat.archived ? '<span class="chip">archived</span>' : ''}${cat.pendingReview ? '<span class="chip">new</span>' : ''}</span><span class="sub">${subs.length} subcategories · ${cats.usageCount(cat.id)} entries</span></span>
-          <span class="row" style="flex-wrap:nowrap"><button class="icon-btn" data-up="${esc(cat.id)}" aria-label="Move up">↑</button><button class="icon-btn" data-down="${esc(cat.id)}" aria-label="Move down">↓</button><button class="icon-btn" data-act="${esc(cat.id)}" aria-label="Actions">⋯</button></span>
+          <span class="main" ${subs.length ? `data-fold="${esc(cat.id)}" style="cursor:pointer"` : ''}><span class="title">${esc(cat.name)} ${cat.archived ? '<span class="chip">archived</span>' : ''}${cat.pendingReview ? '<span class="chip">new</span>' : ''}</span><span class="sub">${subs.length} subcategories · ${cats.usageCount(cat.id)} entries</span></span>
+          ${subs.length ? `<button type="button" class="icon-btn" data-fold="${esc(cat.id)}" aria-expanded="${openCats.has(cat.id)}" aria-label="Subcategories of ${esc(cat.name)}">${icon('right', { cls: 'fold' })}</button>` : ''}
+          ${rowButtons(cat, i === 0, i === tree.length - 1)}
         </div>
         <div data-subs="${esc(cat.id)}" ${openCats.has(cat.id) ? '' : 'hidden'}>
-        ${subs.map((s) => `<div class="list-item" style="padding-left:20px"><span class="avatar">${esc(cats.icon(s))}</span><span class="main"><span class="title">${esc(s.name)} ${s.archived ? '<span class="chip">archived</span>' : ''}${s.pendingReview ? '<span class="chip">new</span>' : ''}</span><span class="sub">${cats.usageCount(s.id)} entries</span></span>
-          <span class="row" style="flex-wrap:nowrap"><button class="icon-btn" data-up="${esc(s.id)}" aria-label="Move up">↑</button><button class="icon-btn" data-down="${esc(s.id)}" aria-label="Move down">↓</button><button class="icon-btn" data-act="${esc(s.id)}" aria-label="Actions">⋯</button></span></div>`).join('')}
+        ${subs.map((s, j) => `<div class="list-item" style="padding-left:20px"><span class="avatar">${esc(cats.icon(s))}</span><span class="main"><span class="title">${esc(s.name)} ${s.archived ? '<span class="chip">archived</span>' : ''}${s.pendingReview ? '<span class="chip">new</span>' : ''}</span><span class="sub">${cats.usageCount(s.id)} entries</span></span>
+          ${rowButtons(s, j === 0, j === subs.length - 1)}</div>`).join('')}
         </div>
       </div>`).join('') : empty('No categories.')}`;
 
@@ -56,23 +63,18 @@ export async function categoriesScreen(root, ctx, { hub = false } = {}) {
   const setOpen = (id, open) => {
     open ? openCats.add(id) : openCats.delete(id);
     root.querySelector(`[data-subs="${CSS.escape(id)}"]`)?.toggleAttribute('hidden', !open);
-    root.querySelector(`[data-fold="${CSS.escape(id)}"]`)?.setAttribute('aria-expanded', open);
+    root.querySelectorAll(`button[data-fold="${CSS.escape(id)}"]`).forEach((b) => b.setAttribute('aria-expanded', open));
   };
 
-  root.onkeydown = (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.dataset?.fold) { e.preventDefault(); e.target.click(); } };
-  $('#arch', root).onchange = (e) => { showArchived = e.target.checked; ctx.refresh(); };
   root.onclick = async (e) => {
     const fold = e.target.closest('[data-fold]');
     if (fold) { setOpen(fold.dataset.fold, !openCats.has(fold.dataset.fold)); saveOpen(); return; }
     const b = e.target.closest('button');
     if (!b) return;
     const d = b.dataset;
-    if ('foldall' in d) {
-      const open = !tree.some(({ cat }) => openCats.has(cat.id));
-      tree.forEach(({ cat }) => setOpen(cat.id, open));
-      saveOpen();
-      b.textContent = open ? 'Collapse all' : 'Expand all';
-    } else if (d.ct) { catType = d.ct; ctx.refresh(); }
+    if ('reorder' in d) { reordering = !reordering; ctx.refresh(); }
+    else if ('arch' in d) { showArchived = !showArchived; ctx.refresh(); }
+    else if (d.ct) { catType = d.ct; ctx.refresh(); }
     else if ('addmain' in d) {
       const name = await promptDialog({ title: `New ${catType} category`, label: 'Name' });
       if (name?.trim()) { await cats.create({ name, type: catType }); ctx.refresh(); }
@@ -89,6 +91,12 @@ export async function categoriesScreen(root, ctx, { hub = false } = {}) {
     catType = order[n];
     ctx.refresh();
   });
+}
+
+/** ⋯ on each row normally; in Reorder mode, up / down arrows (moving a subcategory stays inside its category). */
+function rowButtons(c, first, last) {
+  if (!reordering) return `<button type="button" class="icon-btn" data-act="${esc(c.id)}" aria-label="Actions for ${esc(c.name)}">${icon('dots')}</button>`;
+  return `<span class="row" style="flex-wrap:nowrap;gap:0"><button type="button" class="icon-btn" data-up="${esc(c.id)}" aria-label="Move ${esc(c.name)} up" ${first ? 'disabled' : ''}>${icon('arrowUp')}</button><button type="button" class="icon-btn" data-down="${esc(c.id)}" aria-label="Move ${esc(c.name)} down" ${last ? 'disabled' : ''}>${icon('arrowDown')}</button></span>`;
 }
 
 async function categoryActions(id, ctx) {
@@ -150,12 +158,12 @@ export async function budgetsScreen(root, ctx, { hub = false } = {}) {
   const editable = (b) => hub || b.ownerId === cfg.memberId;
 
   root.innerHTML = `
-    <div class="row between" style="margin-bottom:12px"><b>${esc(monthLabel(month))}</b><button class="btn primary small" data-add>+ Budget</button></div>
-    ${sts.length ? sts.map((s) => `<div class="card"><div class="row between"><b>${esc(s.label)}</b>
-        <span class="muted small">${s.budget.scope === 'family' ? 'Family' : esc(tx.memberName(s.budget.memberId))}${editable(s.budget) ? '' : ' · set by Hub'}</span></div>
+    <div class="row between" style="margin-bottom:12px"><b>${esc(monthLabel(month))}</b><button class="btn primary small" data-add>${icon('plus')} Budget</button></div>
+    ${sts.length ? sts.map((s) => `<div class="card"><div class="row between" style="flex-wrap:nowrap"><b class="grow">${esc(s.label)}</b>${statusChip(s.level)}
+        ${editable(s.budget) ? `<button type="button" class="icon-btn" data-menu="${esc(s.budget.id)}" aria-label="Options for ${esc(s.label)}" style="margin:-8px -10px -8px 0">${icon('dots')}</button>` : ''}</div>
         ${progress(s.pct, s.level)}
-        <div class="row between small" style="margin-top:6px"><span class="num ${s.level === 'over' ? 'danger-text' : ''}">${money(s.used)} of ${money(s.budget.limit)} (${Math.round(s.pct)}%)</span>
-          ${editable(s.budget) ? `<span class="row"><button class="btn small" data-edit="${esc(s.budget.id)}">Edit</button><button class="btn small" data-del="${esc(s.budget.id)}">Delete</button></span>` : ''}</div>
+        <div class="row between small" style="margin-top:6px"><span class="num"><b>${money(s.used)}</b> of ${money(s.budget.limit)}</span>
+          <span class="muted">${s.budget.scope === 'family' ? 'Family' : esc(tx.memberName(s.budget.memberId))}${editable(s.budget) ? '' : ' · set by Hub'} · <span class="num ${s.level === 'over' ? 'danger-text' : ''}">${Math.round(s.pct)}%</span></span></div>
         <p class="muted small" style="margin:4px 0 0">${paceText(s)}</p>
         ${s.partial ? '<p class="muted small">Showing only your own spending. The Hub\'s next family package (with summary) gives the full family figure.</p>' : ''}
       </div>`).join('') : empty('No budgets yet.', hub ? 'Set monthly limits for the family or for each member.' : 'Add a monthly limit for a category you want to watch.')}`;
@@ -164,9 +172,24 @@ export async function budgetsScreen(root, ctx, { hub = false } = {}) {
     const b = e.target.closest('button');
     if (!b) return;
     if ('add' in b.dataset) budgetSheet(null, { hub }, ctx);
-    else if (b.dataset.edit) budgetSheet(db.get('budgets', b.dataset.edit), { hub }, ctx);
-    else if (b.dataset.del && (await confirmDialog('Delete this budget?', { okText: 'Delete', danger: true }))) { await budgets.remove(b.dataset.del); ctx.refresh(); }
+    else if (b.dataset.menu) {
+      const id = b.dataset.menu;
+      const choice = await pickDialog(sts.find((x) => x.budget.id === id)?.label || 'Budget', [['edit', 'Edit'], ['delete', 'Delete']]);
+      if (choice === 'edit') budgetSheet(db.get('budgets', id), { hub }, ctx);
+      else if (choice === 'delete') {
+        await budgets.remove(id);
+        ctx.refresh();
+        undoToast('Budget deleted', async () => { await budgets.restore(id); ctx.refresh(); });
+      }
+    }
   };
+}
+
+/** Over / Near limit / On track, with an icon, so the state never depends on colour alone. */
+function statusChip(level) {
+  if (level === 'over') return `<span class="st over">${icon('alert')} Over</span>`;
+  if (level === 'warn') return `<span class="st warn">Near limit</span>`;
+  return `<span class="st ok">${icon('check')} On track</span>`;
 }
 
 function paceText(s) {

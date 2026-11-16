@@ -23,6 +23,7 @@ export const update = (id, patch) => db.update('transactions', id, patch);
 /** One patch for many entries: one write, one screen refresh. */
 export const updateMany = (ids, patch) => db.updateMany('transactions', ids, patch);
 export const remove = (id) => db.update('transactions', id, { deleted: true });
+export const restore = (id) => db.update('transactions', id, { deleted: false });
 
 /** Filter transactions. scope: 'mine' | 'all'. Returns newest first. */
 export function query(f = {}) {

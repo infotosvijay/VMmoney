@@ -15,6 +15,7 @@ export async function save({ id, scope, memberId, categoryId, subcategoryId, lim
   return id ? db.update('budgets', id, rec) : db.put('budgets', rec);
 }
 export const remove = (id) => db.update('budgets', id, { deleted: true });
+export const restore = (id) => db.update('budgets', id, { deleted: false });
 
 /** Spend in a month matching a budget, from the records present on this device. */
 export function spent(b, month = thisMonth()) {

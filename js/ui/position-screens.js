@@ -6,6 +6,7 @@ import { esc, FAMILY, otherMember, localDate } from '../models.js';
 import * as H from '../holdings.js';
 import * as tx from '../transactions.js';
 import { onSwipe, $, $$, money, evalAmount, hasMath, toast, confirmDialog, pickDialog, pickFiles, shareOrDownload, download, empty } from './components.js';
+import { icon } from './icons.js';
 
 const person = (id) => FAMILY.find((f) => f.id === id) || { id, name: '?', color: '#64748b' };
 const pbadge = (id) => { const p = person(id); return `<span class="pbadge" style="--c:${esc(p.color)}">${esc(p.name)}</span>`; };
@@ -186,7 +187,7 @@ function overview(box, ctx) {
     <h2 class="sec">Between VJ and MM</h2>
     <div class="card"><p>${net === 0 ? 'No money transferred between you two yet.' : net > 0 ? `<b>VJ</b> has transferred <b class="num">${money(net)}</b> more to <b>MM</b> than received.` : `<b>MM</b> has transferred <b class="num">${money(-net)}</b> more to <b>VJ</b> than received.`}</p>
       <p class="muted small">Based on the transfers recorded on this device${cfg.mode === 'hub' ? '' : ' (the Hub has the complete picture)'}.</p>
-      <a class="btn small" href="#/add?type=transfer">＋ Record a transfer</a></div>
+      <a class="btn small" href="#/add?type=transfer">${icon('plus')} Record a transfer</a></div>
 
     <h2 class="sec">Share</h2>
     <div class="row"><button class="btn primary" data-share="summary">Share summary</button></div>`;
@@ -206,24 +207,31 @@ function overview(box, ctx) {
 
 // ---------------------------------------------------------------- banks
 
+let bankReorder = false; // Reorder mode: up/down arrows on each bank
+
 function banks(box, ctx) {
   const r = H.position();
+  const canReorder = FAMILY.some((f) => H.banks(f.id).length > 1);
   box.innerHTML = `
+    ${canReorder ? `<div class="row end" style="margin-bottom:8px">${bankReorder ? '<button type="button" class="btn primary" data-bankreorder>Done</button>' : `<button type="button" class="btn" data-bankreorder>${icon('reorder')} Reorder</button>`}</div>` : ''}
     <div class="row" style="margin-bottom:12px"><span class="chip">Balance <b class="num" data-bind="bankTotal">${money(r.bankTotal)}</b>${byEntries(famEntries('online'))}</span><span class="chip">Usable <b class="num" data-bind="usableTotal">${money(r.usableTotal)}</b></span></div>
     ${entriesNote()}
     ${FAMILY.map((f, pi) => `<h2 class="sec">${pbadge(f.id)} ${esc(f.name)}'s banks <span class="muted small num" data-bind="people.${pi}.bankTotal">${money(r.people[pi].bankTotal)}</span>${byEntries(tx.inHand(f.id).online)}</h2>
       ${H.banks(f.id).map((b, i, arr) => `<div class="card">
         <div class="row" style="flex-wrap:nowrap"><input class="name-input" data-f="bank.name" data-id="${esc(b.id)}" value="${esc(b.name)}" placeholder="Bank name" maxlength="24" aria-label="Bank name" autocomplete="off">
-          <button class="icon-btn" data-move="-1" data-id="${esc(b.id)}" aria-label="Move up" ${i === 0 ? 'disabled' : ''}>↑</button>
-          <button class="icon-btn" data-move="1" data-id="${esc(b.id)}" aria-label="Move down" ${i === arr.length - 1 ? 'disabled' : ''}>↓</button>
-          <button class="icon-btn" data-del="${esc(b.id)}" aria-label="Remove ${esc(b.name || 'bank')}">✕</button></div>
+          ${bankReorder ? `<button class="icon-btn" data-move="-1" data-id="${esc(b.id)}" aria-label="Move ${esc(b.name || 'bank')} up" ${i === 0 ? 'disabled' : ''}>${icon('arrowUp')}</button>
+          <button class="icon-btn" data-move="1" data-id="${esc(b.id)}" aria-label="Move ${esc(b.name || 'bank')} down" ${i === arr.length - 1 ? 'disabled' : ''}>${icon('arrowDown')}</button>`
+          : `<button class="icon-btn" data-del="${esc(b.id)}" aria-label="Remove ${esc(b.name || 'bank')}">${icon('close')}</button>`}</div>
         ${moneyInput('bank.balance', b.id, b.balance, `${b.name || 'Bank'} balance`)}
         <div class="row between small" style="margin-top:6px"><span class="muted">Usable (after minimum)</span><b class="num" data-bind="usable-${esc(b.id)}">${money(H.usable(b))}</b></div></div>`).join('') || '<p class="muted">No banks yet.</p>'}
-      <button class="btn" style="width:100%" data-addbank="${esc(f.id)}" ${H.banks(f.id).length >= H.MAX_ROWS ? 'disabled' : ''}>＋ Add bank for ${esc(f.name)}</button>`).join('')}
+      <button class="btn" style="width:100%" data-addbank="${esc(f.id)}" ${H.banks(f.id).length >= H.MAX_ROWS ? 'disabled' : ''}>${icon('plus')} Add bank for ${esc(f.name)}</button>`).join('')}
     <div class="card" style="margin-top:14px"><span class="lbl">Keep this much in every bank (not counted as usable)</span>${moneyInput('minBalance', null, H.minBalance(), 'Minimum balance')}</div>
     <p class="muted small">Each bank counts toward its owner. Card pending is on the Cards tab.</p>`;
   listen(box, ctx);
-  box.addEventListener('click', (e) => rowActions(e, ctx, 'bank'));
+  box.addEventListener('click', (e) => {
+    if (e.target.closest('[data-bankreorder]')) { bankReorder = !bankReorder; ctx.refresh(); return; }
+    rowActions(e, ctx, 'bank');
+  });
 }
 
 // ---------------------------------------------------------------- cash
@@ -236,10 +244,10 @@ function cash(box, ctx) {
     ${FAMILY.map((f, pi) => `<h2 class="sec">${pbadge(f.id)} ${esc(f.name)}'s cash <span class="muted small num" data-bind="person-cash-${esc(f.id)}">${money(r.people[pi].cash)}</span>${byEntries(tx.inHand(f.id).cash)}</h2>
       <form class="row" data-quick="${esc(f.id)}" style="flex-wrap:nowrap;margin-bottom:8px">
         ${moneyInput('quick', null, null, 'New cash amount')}<input name="note" placeholder="Note (optional)" maxlength="30" aria-label="Note" style="max-width:40%">
-        <button class="btn primary" ${H.cashEntries(f.id).length >= H.MAX_ROWS ? 'disabled' : ''}>＋</button></form>
+        <button class="btn primary" ${H.cashEntries(f.id).length >= H.MAX_ROWS ? 'disabled' : ''} aria-label="Add cash">${icon('plus')}</button></form>
       <div class="card list" style="padding:0 12px">${H.cashEntries(f.id).map((c) => `<div class="list-item" style="gap:8px">
         ${moneyInput('cash.amount', c.id, c.amount, 'Cash amount')}<input class="name-input" data-f="cash.note" data-id="${esc(c.id)}" value="${esc(c.note || '')}" placeholder="Note" maxlength="30" aria-label="Note" style="max-width:38%">
-        <button class="icon-btn" data-del="${esc(c.id)}" aria-label="Remove">✕</button></div>`).join('') || '<p class="muted small" style="padding:10px 0">No cash entries.</p>'}</div>`).join('')}`;
+        <button class="icon-btn" data-del="${esc(c.id)}" aria-label="Remove">${icon('close')}</button></div>`).join('') || '<p class="muted small" style="padding:10px 0">No cash entries.</p>'}</div>`).join('')}`;
   listen(box, ctx);
   box.addEventListener('click', (e) => rowActions(e, ctx, 'cash'));
   box.addEventListener('submit', async (e) => {

@@ -12,6 +12,7 @@ import * as hubfile from '../hubfile.js';
 import * as live from '../livesync.js';
 import { qrSvg } from './qr.js';
 import { $, $$, money, toast, confirmDialog, promptDialog, pickFiles, shareOrDownload, empty, progress, relTime, daysSince, drawChart, cssVar, sheet, onSwipe, monthTitle, pickMonth } from './components.js';
+import { icon } from './icons.js';
 import { entryScreen } from './entry-screen.js';
 import { transactionsScreen } from './transactions-screen.js';
 import { reportsScreen } from './reports-screen.js';
@@ -48,9 +49,9 @@ async function dashboardScreen(root, ctx) {
   root.innerHTML = `
     ${hubfile.supported && !hubfile.status.linked ? `<div class="banner"><b>Link your master file</b><p class="small">Save everything to a family.json on this computer so nothing is ever lost.</p><div class="row"><a class="btn primary small" href="#/masterfile">Set up</a></div></div>` : ''}
     <div class="row between" style="margin-bottom:12px">
-      <button class="btn small" data-mnav="-1" aria-label="Previous month">‹</button>
+      <button class="btn icon" data-mnav="-1" aria-label="Previous month">${icon('left')}</button>
       ${monthTitle(monthLabel(month))}
-      <button class="btn small" data-mnav="1" aria-label="Next month" ${month >= cur ? 'disabled' : ''}>›</button>
+      <button class="btn icon" data-mnav="1" aria-label="Next month" ${month >= cur ? 'disabled' : ''}>${icon('right')}</button>
     </div>
     ${pend ? `<div class="banner info"><b>${pend} new ${pend === 1 ? 'category' : 'categories'} to review</b><div class="row"><a class="btn small primary" href="#/categories">Review</a></div></div>` : ''}
     <div class="grid stats">
@@ -320,18 +321,18 @@ export const hubRoutes = {
 };
 
 export const hubNav = [
-  { id: 'dashboard', ico: '📊', label: 'Dashboard', tab: true },
-  { id: 'transactions', ico: '🧾', label: 'Transactions', tab: true },
-  { id: 'add', ico: '＋', label: 'Add entry', tab: true },
-  { id: 'import', ico: '📥', label: 'Import center', tab: true },
-  { id: 'live', ico: '📡', label: 'Live sync' },
-  { id: 'position', ico: '🏦', label: 'Balances' },
-  { id: 'reports', ico: '📈', label: 'Reports' },
-  { id: 'categories', ico: '🗂️', label: 'Categories' },
-  { id: 'budgets', ico: '🎯', label: 'Budgets' },
-  { id: 'goals', ico: '🐷', label: 'Savings goals' },
-  { id: 'members', ico: '👪', label: 'Members' },
-  { id: 'send', ico: '📤', label: 'Send to members' },
-  { id: 'masterfile', ico: '💾', label: 'Master file' },
-  { id: 'settings', ico: '⚙️', label: 'Settings' },
+  { id: 'dashboard', ico: 'chart', label: 'Dashboard', tab: true },
+  { id: 'transactions', ico: 'receipt', label: 'Transactions', tab: true },
+  { id: 'add', ico: 'plus', label: 'Add entry', tab: true },
+  { id: 'import', ico: 'inbox', label: 'Import center', tab: true },
+  { id: 'live', ico: 'radio', label: 'Live sync' },
+  { id: 'position', ico: 'bank', label: 'Balances' },
+  { id: 'reports', ico: 'trend', label: 'Reports' },
+  { id: 'categories', ico: 'folder', label: 'Categories' },
+  { id: 'budgets', ico: 'target', label: 'Budgets' },
+  { id: 'goals', ico: 'piggy', label: 'Savings goals' },
+  { id: 'members', ico: 'users', label: 'Members' },
+  { id: 'send', ico: 'send', label: 'Send to members' },
+  { id: 'masterfile', ico: 'save', label: 'Master file' },
+  { id: 'settings', ico: 'settings', label: 'Settings' },
 ];

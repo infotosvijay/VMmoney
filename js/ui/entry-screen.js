@@ -7,7 +7,8 @@ import * as cats from '../categories.js';
 import * as tx from '../transactions.js';
 import * as recurring from '../recurring.js';
 import * as budgets from '../budgets.js';
-import { $, $$, toast, confirmDialog, promptDialog, empty, evalAmount, money } from './components.js';
+import { $, $$, toast, undoToast, promptDialog, sheet, empty, evalAmount, money } from './components.js';
+import { icon } from './icons.js';
 
 const yesterday = () => { const d = new Date(); d.setDate(d.getDate() - 1); return localDate(d); };
 
@@ -50,13 +51,13 @@ export async function entryScreen(root, ctx) {
       ${st.split.map((l, i) => `<div class="row" style="flex-wrap:nowrap">
         <select data-sl-cat="${i}" class="grow" aria-label="Category for line ${i + 1}">${splitOptions(l.cat)}</select>
         <input data-sl-amt="${i}" data-calc inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(l.amount)}" aria-label="Amount for line ${i + 1}" style="max-width:120px">
-        ${st.split.length > 2 ? `<button type="button" class="btn small" data-sl-del="${i}" aria-label="Remove line ${i + 1}">✕</button>` : ''}
+        ${st.split.length > 2 ? `<button type="button" class="btn small" data-sl-del="${i}" aria-label="Remove line ${i + 1}">${icon('close')}</button>` : ''}
       </div>`).join('')}
-      <div class="row between"><button type="button" class="btn small" data-sl-add>+ Add line</button><b>Total <span class="num" id="split-total">${money(splitTotal())}</span></b></div>
+      <div class="row between"><button type="button" class="btn small" data-sl-add>${icon('plus')} Add line</button><b>Total <span class="num" id="split-total">${money(splitTotal())}</span></b></div>
     </div>`;
   const lineCategory = (v) => (v?.startsWith('s:') ? { categoryId: db.get('categories', v.slice(2))?.parentId || null, subcategoryId: v.slice(2) } : v?.startsWith('c:') ? { categoryId: v.slice(2), subcategoryId: null } : { categoryId: null, subcategoryId: null });
 
-  let focused = false;
+  let invalid = ''; // 'amount' | 'category': outlined in red until fixed (no extra text on screen)
   function draw() {
     const isT = st.type === 'transfer';
     if (isT && st.xfer !== 'member' && accounts.length >= 2 && (!st.toAccountId || st.toAccountId === st.accountId)) {
@@ -75,48 +76,51 @@ export async function entryScreen(root, ctx) {
         <div class="seg" role="tablist">
           ${['expense', 'income', 'transfer'].map((t) => `<button type="button" role="tab" aria-selected="${st.type === t}" data-type="${t}" class="${st.type === t ? 'on' : ''} ${t}-t">${t[0].toUpperCase() + t.slice(1)}</button>`).join('')}
         </div>
-        ${isT ? `<div class="seg"><button type="button" data-xfer="own" class="${mT ? '' : 'on'}">Between my accounts</button><button type="button" data-xfer="member" class="${mT ? 'on' : ''}">With ${esc(other.name)}</button></div>
-        ${mT ? `<div class="seg"><button type="button" data-dir="out" class="${st.direction === 'in' ? '' : 'on'}">I paid ${esc(other.name)}</button><button type="button" data-dir="in" class="${st.direction === 'in' ? 'on' : ''}">${esc(other.name)} paid me</button></div>
-        <p class="muted small">Record it once: the other person's balance goes up (or down, if they paid you) automatically. If you both record it (same amount, same or next day) it is counted once. It never counts as income or expense.</p>` : ''}` : ''}
-        ${last && !isT && !st.split && !st.amount ? `<button type="button" class="btn small" data-repeat style="align-self:flex-start" title="Fill this form like your last entry">↻ Repeat last: ${esc(lastLabel())}</button>` : ''}
-        <div>
-          <span class="lbl">Date</span>
-          <div class="chips date-chips">
-            <button type="button" data-date="${esc(todayStr())}" class="${st.date === todayStr() ? 'on' : ''}">Today</button>
-            <button type="button" data-date="${esc(yesterday())}" class="${st.date === yesterday() ? 'on' : ''}">Yesterday</button>
-            <label class="datebtn ${st.date !== todayStr() && st.date !== yesterday() ? 'on' : ''}">📅 ${st.date === todayStr() || st.date === yesterday() ? 'Pick date' : esc(dayLabel(st.date))}<input id="date" type="date" value="${esc(st.date)}" max="2100-12-31" aria-label="Pick a date"></label>
-          </div>
-        </div>
-        ${isT || existing ? '' : `<button type="button" class="btn small" data-split style="align-self:flex-start">${st.split ? '← One category' : '✂ Split across categories'}</button>`}
+        ${isT ? `<div class="row" style="flex-wrap:nowrap;gap:6px"><div class="seg grow"><button type="button" data-xfer="own" class="${mT ? '' : 'on'}">My accounts</button><button type="button" data-xfer="member" class="${mT ? 'on' : ''}">With ${esc(other.name)}</button></div>
+          <button type="button" class="icon-btn" data-xinfo aria-label="How transfers with ${esc(other.name)} work" style="color:var(--muted)">${icon('info')}</button></div>
+        ${mT ? `<div class="seg"><button type="button" data-dir="out" class="${st.direction === 'in' ? '' : 'on'}">${icon('arrowUp')} I paid ${esc(other.name)}</button><button type="button" data-dir="in" class="${st.direction === 'in' ? 'on' : ''}">${icon('arrowDown')} ${esc(other.name)} paid me</button></div>` : ''}` : ''}
+        ${st.split && !isT ? '' : `<label class="card amount-card ${st.type}-t ${invalid === 'amount' ? 'invalid' : ''}" style="display:block;margin-bottom:0">
+          <span class="lbl">Amount</span>
+          <input id="amount" class="amount-input" inputmode="decimal" data-calc autocomplete="off" placeholder="0" value="${esc(st.amount)}" aria-label="Amount (${esc(cfg.currency || 'INR')})" ${invalid === 'amount' ? 'aria-invalid="true"' : ''}>
+        </label>`}
         ${isT ? '' : st.split ? splitHTML() : `
-        <div>
-          <div class="card-head"><b>Category</b>${picked || archivedPick ? '<span class="muted small">Tap it again to change</span>' : '<button type="button" class="btn small ghost" data-newcat>+ New</button>'}</div>
+        <div id="cat-block" class="${invalid === 'category' ? 'invalid' : ''}">
+          <div class="card-head"><b>Category</b>${picked || archivedPick ? '' : `<button type="button" class="btn small ghost" data-newcat>${icon('plus')} New</button>`}</div>
           <div class="cat-grid ${picked || archivedPick ? 'collapsed' : ''}">
             ${archivedPick ? `<button type="button" class="cat-tile on" disabled><span class="e">${esc(archivedPick.icon)}</span>${esc(archivedPick.name)} (archived)</button>` : ''}
-            ${tree.filter(({ cat }) => !picked || cat.id === st.categoryId).map(({ cat }) => `<button type="button" class="cat-tile ${cat.id === st.categoryId ? 'on' : ''}" data-cat="${esc(cat.id)}"><span class="e">${esc(cat.icon)}</span>${esc(cat.name)}</button>`).join('')}
+            ${tree.filter(({ cat }) => !picked || cat.id === st.categoryId).map(({ cat }) => `<button type="button" class="cat-tile ${cat.id === st.categoryId ? 'on' : ''}" data-cat="${esc(cat.id)}" ${cat.id === st.categoryId ? 'aria-pressed="true"' : ''}><span class="e">${esc(cat.icon)}</span>${esc(cat.name)}</button>`).join('')}
           </div>
         </div>
-        ${picked ? `<div><div class="card-head"><b>${esc(picked.cat.name)}: subcategory <span class="muted small">(optional)</span></b>${subPicked || archivedSub ? '<span class="muted small">Tap it again to change</span>' : '<button type="button" class="btn small ghost" data-newsub>+ New</button>'}</div>
+        ${picked ? `<div><div class="card-head"><b>${esc(picked.cat.name)}: subcategory <span class="muted small">(optional)</span></b>${subPicked || archivedSub ? '' : `<button type="button" class="btn small ghost" data-newsub>${icon('plus')} New</button>`}</div>
           ${picked.subs.length || archivedSub ? `<div class="cat-grid ${subPicked || archivedSub ? 'collapsed' : ''}">
             ${archivedSub ? `<button type="button" class="cat-tile on" disabled><span class="e">${esc(cats.icon(archivedSub))}</span>${esc(archivedSub.name)} (archived)</button>` : ''}
-            ${picked.subs.filter((s) => !subPicked || s.id === st.subcategoryId).map((s) => `<button type="button" class="cat-tile ${s.id === st.subcategoryId ? 'on' : ''}" data-sub="${esc(s.id)}"><span class="e">${esc(cats.icon(s))}</span>${esc(s.name)}</button>`).join('')}
+            ${picked.subs.filter((s) => !subPicked || s.id === st.subcategoryId).map((s) => `<button type="button" class="cat-tile ${s.id === st.subcategoryId ? 'on' : ''}" data-sub="${esc(s.id)}" ${s.id === st.subcategoryId ? 'aria-pressed="true"' : ''}><span class="e">${esc(cats.icon(s))}</span>${esc(s.name)}</button>`).join('')}
           </div>` : '<span class="muted small">No subcategories yet.</span>'}</div>` : ''}`}
         <div>
           <span class="lbl">${mT ? (st.direction === 'in' ? 'Received into' : 'Paid from') : isT ? 'Move money' : st.type === 'income' ? 'Received into' : 'Paid from'}</span>
           ${isT && !mT ? `<div class="seg">${[[accounts[0], accounts[1]], [accounts[1], accounts[0]]].map(([f, to]) => `<button type="button" data-xdir="${esc(f.id)}|${esc(to.id)}" class="${st.accountId === f.id ? 'on' : ''}">${esc(f.name)} → ${esc(to.name)}</button>`).join('')}</div>`
             : `<div class="seg">${accounts.map((a) => `<button type="button" data-acc="${esc(a.id)}" class="${a.id === st.accountId ? 'on' : ''}">${esc(a.name)}</button>`).join('')}</div>`}
         </div>
-        ${st.split && !isT ? '' : `<label class="field"><span>Amount (${esc(cfg.currency || 'INR')})</span>
-          <input id="amount" class="amount-input" inputmode="decimal" data-calc autocomplete="off" placeholder="0" value="${esc(st.amount)}">
-        </label>`}
-        <label class="field"><span>Note</span><input id="note" maxlength="200" value="${esc(st.note)}" placeholder="What was it for?" list="note-list" autocomplete="off"></label>
+        <div>
+          <span class="lbl">Date</span>
+          <div class="chips date-chips">
+            <button type="button" data-date="${esc(todayStr())}" class="${st.date === todayStr() ? 'on' : ''}">Today</button>
+            <button type="button" data-date="${esc(yesterday())}" class="${st.date === yesterday() ? 'on' : ''}">Yesterday</button>
+            <label class="datebtn ${st.date !== todayStr() && st.date !== yesterday() ? 'on' : ''}">${icon('calendar')} ${st.date === todayStr() || st.date === yesterday() ? 'Pick date' : esc(dayLabel(st.date))}<input id="date" type="date" value="${esc(st.date)}" max="2100-12-31" aria-label="Pick a date"></label>
+          </div>
+        </div>
+        <label class="field"><span>Note</span><input id="note" maxlength="200" value="${esc(st.note)}" list="note-list" autocomplete="off"></label>
         <datalist id="note-list">${noteOptions}</datalist>
         ${existing || isT || st.split ? '' : `<label class="field"><span>Repeat</span>
           <select id="repeat"><option value="">Does not repeat</option>${FREQUENCIES.map(([v, l]) => `<option value="${v}" ${v === st.repeat ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`}
-        <p id="err" class="danger-text small" role="alert"></p>
+        ${(last && !isT && !st.split && !st.amount) || !(isT || existing) ? `<div class="row">
+          ${last && !isT && !st.split && !st.amount ? `<button type="button" class="btn small ghost" data-repeat title="Fill this form like your last entry: ${esc(lastLabel())}">${icon('repeat')} Repeat last</button>` : ''}
+          ${isT || existing ? '' : `<button type="button" class="btn small ghost" data-split>${st.split ? `${icon('back')} One category` : `${icon('scissors')} Split`}</button>`}
+        </div>` : ''}
+        <p id="err" class="danger-text small" role="alert">${invalid === 'amount' ? '<span class="vh">Enter an amount</span>' : invalid === 'category' ? '<span class="vh">Pick a category</span>' : ''}</p>
         <div class="row">
-          <button class="btn primary grow" data-save>${existing ? 'Save changes' : 'Save'}</button>
           ${existing ? '' : '<button type="button" class="btn grow" data-again>Save &amp; add another</button>'}
+          <button class="btn primary grow" data-save>${existing ? 'Save changes' : 'Save'}</button>
         </div>
         ${existing?.splitId ? '<p class="muted small">This entry is one part of a split bill. Edit or delete each part on its own.</p>' : ''}
         ${existing ? '<button type="button" class="btn danger" data-delete style="width:100%">Delete entry</button>' : ''}
@@ -163,12 +167,17 @@ export async function entryScreen(root, ctx) {
     sync();
     if (st.split && st.type !== 'transfer') return saveSplit(again);
     const err = $('#err', root);
+    invalid = '';
     const amount = Math.round(evalAmount(st.amount) * 100) / 100;
-    if (!(amount > 0)) { err.textContent = 'Enter an amount greater than zero.'; $('#amount', root).focus(); return; }
+    if (!(amount > 0)) { invalid = 'amount'; draw(); $('#amount', root).focus(); return; }
     if (!st.date) { err.textContent = 'Pick a date.'; return; }
     if (st.type === 'transfer') {
       if (!st.accountId || (st.xfer !== 'member' && !st.toAccountId)) { err.textContent = st.xfer === 'member' ? 'Choose your account.' : 'Choose both accounts for a transfer.'; return; }
-    } else if (!st.categoryId) { err.textContent = 'Choose a category.'; return; }
+    } else if (!st.categoryId) {
+      invalid = 'category'; draw();
+      $('#cat-block', root)?.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      return;
+    }
     const data = {
       type: st.type, amount, date: st.date, note: st.note.trim(), paymentMode: db.get('accounts', st.accountId)?.type === 'cash' ? 'cash' : 'online',
       categoryId: st.type === 'transfer' ? null : st.categoryId, subcategoryId: st.type === 'transfer' ? null : st.subcategoryId,
@@ -209,7 +218,15 @@ export async function entryScreen(root, ctx) {
       else if (b.dataset.date) { sync(); st.date = b.dataset.date; draw(); }
       else if (b.dataset.xfer) { sync(); st.xfer = b.dataset.xfer; draw(); }
       else if (b.dataset.dir) { sync(); st.direction = b.dataset.dir; draw(); }
-      else if (b.dataset.cat) { sync(); const same = st.categoryId === b.dataset.cat; st.categoryId = same ? null : b.dataset.cat; st.subcategoryId = null; draw(); }
+      else if ('xinfo' in b.dataset) {
+        const o = esc(otherMember(cfg.memberId).name);
+        sheet(`Transfers with ${otherMember(cfg.memberId).name}`, `<ul style="margin:0 0 8px;padding-left:20px;line-height:1.6">
+          <li>Record it once: ${o}'s balance updates automatically.</li>
+          <li>If you both record it (same amount, same or next day), it counts once.</li>
+          <li>Moves between your own accounts don't change your total.</li>
+          <li>Never counts as income or spending.</li></ul>`);
+      }
+      else if (b.dataset.cat) { sync(); if (invalid === 'category') invalid = ''; const same = st.categoryId === b.dataset.cat; st.categoryId = same ? null : b.dataset.cat; st.subcategoryId = null; draw(); }
       else if (b.dataset.sub) { sync(); st.subcategoryId = st.subcategoryId === b.dataset.sub ? null : b.dataset.sub; draw(); }
       else if ('newcat' in b.dataset) {
         sync();
@@ -221,15 +238,14 @@ export async function entryScreen(root, ctx) {
         if (name?.trim()) { const c = await cats.create({ name, type: st.type, parentId: st.categoryId }); st.subcategoryId = c.id; draw(); }
       } else if ('again' in b.dataset) save(true);
       else if ('delete' in b.dataset) {
-        if (await confirmDialog('Delete this entry? It will also be removed from the Hub at your next sync.', { okText: 'Delete', danger: true })) {
-          await tx.remove(existing.id);
-          toast('Entry deleted');
-          history.length > 1 ? history.back() : ctx.go('transactions');
-        }
+        await tx.remove(existing.id);
+        undoToast('Entry deleted', async () => { await tx.restore(existing.id); window.dispatchEvent(new HashChangeEvent('hashchange')); });
+        history.length > 1 ? history.back() : ctx.go('transactions');
       }
     };
     $('#f', root).onsubmit = (e) => { e.preventDefault(); save(false); };
     root.oninput = (e) => {
+      if (invalid === 'amount' && e.target.id === 'amount') { invalid = ''; e.target.closest('.amount-card')?.classList.remove('invalid'); e.target.removeAttribute('aria-invalid'); }
       if (!st.split || !e.target.matches('[data-sl-amt]')) return;
       st.split[+e.target.dataset.slAmt].amount = e.target.value;
       $('#split-total', root).textContent = money(splitTotal());

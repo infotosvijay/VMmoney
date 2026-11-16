@@ -6,7 +6,8 @@ import * as tx from '../transactions.js';
 import * as reports from '../reports.js';
 import { viewOf, whoSeg } from './rows.js';
 import * as cats from '../categories.js';
-import { onSwipe, $, money, download, drawChart, cssVar } from './components.js';
+import { onSwipe, $, money, download, drawChart, cssVar, chartColors } from './components.js';
+import { icon } from './icons.js';
 
 export async function reportsScreen(root, ctx) {
   const P = ctx.params;
@@ -63,10 +64,9 @@ export async function reportsScreen(root, ctx) {
 
   root.innerHTML = `
     ${view.seg ? whoSeg(view.w) : ''}
-    <div class="row between no-print" style="margin-bottom:12px">
-      <div class="seg" style="min-width:160px"><button data-p="month" class="${mode === 'month' ? 'on' : ''}">Monthly</button><button data-p="year" class="${mode === 'year' ? 'on' : ''}">Yearly</button></div>
-      <div class="row"><button class="btn small" data-nav="-1" aria-label="Previous">‹</button><b>${esc(label)}</b><button class="btn small" data-nav="1" aria-label="Next">›</button></div>
-      <div class="row"><button class="btn small" data-csv>⬇ CSV</button><button class="btn small" data-print>🖨 PDF statement</button></div>
+    <div class="row between no-print" style="margin-bottom:12px;flex-wrap:nowrap">
+      <div class="seg"><button data-p="month" class="${mode === 'month' ? 'on' : ''}">Month</button><button data-p="year" class="${mode === 'year' ? 'on' : ''}">Year</button></div>
+      <div class="row"><button class="btn icon" data-nav="-1" aria-label="Previous">${icon('left')}</button><b>${esc(label)}</b><button class="btn icon" data-nav="1" aria-label="Next">${icon('right')}</button></div>
     </div>
     <h2 class="muted small print-title" id="print-title">${hub ? 'Family' : esc(cfg.memberName)} report: ${esc(label)}</h2>
     <div class="tabs2" role="tablist" data-swipe="kind">
@@ -82,9 +82,8 @@ export async function reportsScreen(root, ctx) {
 
     <div class="card" style="padding:6px 12px" data-swipe="kind">
       <div class="card-head" style="padding-top:8px"><h2>${kind === 'expense' ? 'Expenses' : 'Income'} by category</h2><span class="muted small">vs ${esc(prevLabel)}</span></div>
-      ${rows.length ? rows.map((r) => `<a class="rank link" href="${detail(r.id)}"><span class="pct" style="background:${esc(r.color)}">${Math.round((r.total / (kindTotal || 1)) * 100)}%</span>
+      ${rows.length ? rows.map((r) => `<a class="rank link" href="${detail(r.id)}"><span class="pct" style="--c:${esc(r.color)}">${Math.round((r.total / (kindTotal || 1)) * 100)}%</span>
         <span class="grow">${esc(r.icon)} ${esc(r.name)} <span class="muted small">(${r.count})</span></span><span class="num">${money(r.total)}</span><span class="delta">${delta(r)}</span></a>`).join('') : '<p class="muted">Nothing recorded.</p>'}
-      <p class="muted small no-print" style="margin:8px 2px">Tap a category for its subcategories, month-by-month history and daily entries.</p>
     </div>
     <div class="card"><h2>Compared with</h2>
       <table class="tbl"><thead><tr><th></th><th class="r">${esc(label)}</th><th class="r">${esc(prevLabel)}</th>${yearAgoTot ? `<th class="r">${esc(monthLabel(yearAgoKey, false))}</th>` : ''}</tr></thead>
@@ -102,6 +101,8 @@ export async function reportsScreen(root, ctx) {
     </div>
   `;
 
+  $('#topbar').insertAdjacentHTML('beforeend', `<button type="button" class="btn icon no-print" data-csv aria-label="Download CSV" title="Download CSV">${icon('download')}</button><button type="button" class="btn icon no-print" data-print aria-label="PDF statement" title="PDF statement">${icon('printer')}</button>`);
+  $('#topbar').onclick = (e) => root.onclick(e);
   root.onclick = (e) => {
     const b = e.target.closest('button');
     if (b?.dataset.p) return go({ p: b.dataset.p, d: b.dataset.p === 'year' ? d.slice(0, 4) : mode === 'year' ? `${d}-${thisMonth().slice(5)}` : d });
@@ -133,9 +134,12 @@ export async function reportsScreen(root, ctx) {
   if (rows.length) {
     const top = rows.slice(0, 10);
     const rest = rows.slice(10).reduce((s, c) => s + c.total, 0);
-    drawChart($('#c-cat', root), {
+    const pie = $('#c-cat', root);
+    pie?.setAttribute('role', 'img');
+    pie?.setAttribute('aria-label', `${kind === 'expense' ? 'Spending' : 'Income'} by category: ` + rows.map((c) => `${c.name} ${Math.round((c.total / (kindTotal || 1)) * 100)}%`).join(', '));
+    drawChart(pie, {
       type: 'doughnut',
-      data: { labels: [...top.map((c) => c.name), ...(rest ? ['Other'] : [])], datasets: [{ data: [...top.map((c) => c.total), ...(rest ? [rest] : [])], backgroundColor: [...top.map((c) => c.color), ...(rest ? ['#94a3b8'] : [])], borderWidth: 0 }] },
+      data: { labels: [...top.map((c) => c.name), ...(rest ? ['Other'] : [])], datasets: [{ data: [...top.map((c) => c.total), ...(rest ? [rest] : [])], backgroundColor: chartColors(top.length + (rest ? 1 : 0)), borderWidth: 0, spacing: 2 }] },
       options: { plugins: { legend: { position: 'right', labels: { boxWidth: 12 } }, tooltip: { callbacks: { label: (c) => ` ${c.label}: ${money(c.parsed)}` } } } },
     });
   }

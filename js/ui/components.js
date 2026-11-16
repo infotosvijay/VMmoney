@@ -3,10 +3,20 @@
 import * as db from '../db.js';
 import { cfg } from '../db.js';
 import { esc, fmtMoney, thisMonth } from '../models.js';
+import { icon } from './icons.js';
 
+const THEME_COLOR = { light: '#e6ebf3', dark: '#05070d' };
 export function applyTheme() {
-  document.documentElement.dataset.theme = cfg.theme || 'auto';
+  const theme = cfg.theme || 'auto';
+  document.documentElement.dataset.theme = theme;
+  // status-bar colour: follows the system in "auto", otherwise the chosen theme
+  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => {
+    const scheme = m.media.includes('dark') ? 'dark' : 'light';
+    m.content = THEME_COLOR[theme === 'auto' ? scheme : theme] || THEME_COLOR.light;
+  });
 }
+/** Chart colours from the palette: a blue ramp for the biggest slices, grey for the rest. */
+export const chartColors = (n) => Array.from({ length: n }, (_, i) => cssVar(i < 5 ? `--chart-${i + 1}` : '--chart-rest'));
 export const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
 export const $ = (s, r = document) => r.querySelector(s);
@@ -28,11 +38,16 @@ export function toast(msg, { action, onAction, timeout = 3500 } = {}) {
   return close;
 }
 
+/** "Deleted" toast with Undo instead of a confirm popup. `restore` puts the item back. */
+export function undoToast(msg, restore) {
+  return toast(msg, { action: 'Undo', timeout: 6000, onAction: restore });
+}
+
 /** Modal dialog / bottom sheet. Returns { el, close }. */
 export function sheet(title, bodyHTML, { onClose, wide = false } = {}) {
   const dlg = document.createElement('dialog');
   dlg.className = 'sheet' + (wide ? ' wide' : '');
-  dlg.innerHTML = `<div class="sheet-head"><h2>${esc(title)}</h2><button type="button" class="icon-btn" data-close aria-label="Close">✕</button></div><div class="sheet-body">${bodyHTML}</div>`;
+  dlg.innerHTML = `<div class="sheet-head"><h2>${esc(title)}</h2><button type="button" class="icon-btn" data-close aria-label="Close">${icon('close')}</button></div><div class="sheet-body">${bodyHTML}</div>`;
   document.body.append(dlg);
   const close = () => { if (dlg.open) dlg.close(); };
   dlg.addEventListener('close', () => { dlg.remove(); onClose?.(); });
@@ -108,7 +123,7 @@ export function pickFiles({ accept = '.json,application/json', multiple = false 
 }
 
 /** The month title as a button: tap it to jump to any month with the Year / Month dropdowns (see pickMonth). */
-export const monthTitle = (label) => `<button type="button" class="mpick" data-mpick title="Choose a month">${esc(label)} <span aria-hidden="true">▾</span></button>`;
+export const monthTitle = (label) => `<button type="button" class="mpick" data-mpick title="Choose a month">${esc(label)} ${icon('down', { cls: 'sm' })}</button>`;
 
 /** Year + Month dropdowns in a sheet. Resolves 'YYYY-MM', or null if closed. `max` caps the choice (e.g. this month). */
 export function pickMonth(current, { max = null } = {}) {
@@ -168,7 +183,7 @@ export async function drawChart(canvas, config) {
 
 // ---- small HTML builders ----
 
-export const empty = (msg, sub = '') => `<div class="empty"><div class="empty-icon">🗒️</div><p>${esc(msg)}</p>${sub ? `<p class="muted small">${sub}</p>` : ''}</div>`;
+export const empty = (msg, sub = '') => `<div class="empty"><div class="empty-icon">${icon('note')}</div><p>${esc(msg)}</p>${sub ? `<p class="muted small">${sub}</p>` : ''}</div>`;
 
 export const progress = (pct, level = 'ok') => `<div class="bar ${level}" role="progressbar" aria-valuenow="${Math.round(pct)}" aria-valuemin="0" aria-valuemax="100"><i style="width:${Math.min(100, pct)}%"></i></div>`;
 

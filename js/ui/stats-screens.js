@@ -6,6 +6,7 @@ import { esc, addMonths, monthRange, monthLabel } from '../models.js';
 import * as cats from '../categories.js';
 import * as tx from '../transactions.js';
 import { $, money, drawChart, empty } from './components.js';
+import { icon } from './icons.js';
 import { groupedList, viewOf, whoSeg } from './rows.js';
 
 export const categoryTitle = (ctx) => {
@@ -73,7 +74,7 @@ export async function categoryDetailScreen(root, ctx) {
   root.innerHTML = `
     ${view.seg ? whoSeg(view.w) : ''}
     <div class="row between" style="margin-bottom:12px">
-      <div class="row"><button class="btn small" data-nav="-1" aria-label="Previous">‹</button><b>${esc(label)}</b><button class="btn small" data-nav="1" aria-label="Next">›</button></div>
+      <div class="row"><button class="btn icon" data-nav="-1" aria-label="Previous">${icon('left')}</button><b>${esc(label)}</b><button class="btn icon" data-nav="1" aria-label="Next">${icon('right')}</button></div>
       <div class="seg" style="min-width:150px"><button data-p="month" class="${mode === 'month' ? 'on' : ''}">Monthly</button><button data-p="year" class="${mode === 'year' ? 'on' : ''}">Yearly</button></div>
     </div>
     <div class="card">
@@ -83,8 +84,8 @@ export async function categoryDetailScreen(root, ctx) {
     </div>
 
     <div class="card" style="padding:6px 12px">
-      <div class="rank ${s ? '' : 'sel'}" data-sub=""><span class="pct" style="background:${esc(color)}">100%</span><span class="grow">All</span><span class="num">${money(total)}</span></div>
-      ${subs.map((x) => `<div class="rank ${s === x.id ? 'sel' : ''}" data-sub="${esc(x.id)}"><span class="pct" style="background:${esc(color)};opacity:.85">${Math.round((x.total / (total || 1)) * 100)}%</span><span class="grow">${esc(x.name)} <span class="muted small">(${x.count})</span></span><span class="num">${money(x.total)}</span></div>`).join('') || '<p class="muted">Nothing in this period.</p>'}
+      <div class="rank ${s ? '' : 'sel'}" data-sub=""><span class="pct" style="--c:${esc(color)}">100%</span><span class="grow">All</span><span class="num">${money(total)}</span></div>
+      ${subs.map((x) => `<div class="rank ${s === x.id ? 'sel' : ''}" data-sub="${esc(x.id)}"><span class="pct" style="--c:${esc(color)}">${Math.round((x.total / (total || 1)) * 100)}%</span><span class="grow">${esc(x.name)} <span class="muted small">(${x.count})</span></span><span class="num">${money(x.total)}</span></div>`).join('') || '<p class="muted">Nothing in this period.</p>'}
     </div>
 
     <div class="grid two">

@@ -6,6 +6,7 @@ import { esc, otherMember, dayLabel } from '../models.js';
 import * as cats from '../categories.js';
 import * as tx from '../transactions.js';
 import { money } from './components.js';
+import { icon } from './icons.js';
 
 /** Which entries a phone screen shows: mine, the partner's, or the whole family. The hub always sees everyone. */
 export function viewOf(P) {
@@ -27,8 +28,8 @@ export function payIcon(t) {
   if (!id) return '';
   const cash = id.endsWith('-cash') || db.get('accounts', id)?.type === 'cash';
   return cash
-    ? '<span class="pay cash" role="img" aria-label="Cash" title="Cash">💵</span>'
-    : '<span class="pay online" role="img" aria-label="Online" title="Online">🌐</span>';
+    ? `<span class="pay cash" title="Cash">${icon('cash', { label: 'Cash' })}</span>`
+    : `<span class="pay online" title="Online">${icon('online', { label: 'Online' })}</span>`;
 }
 
 export function txRow(t, { showMember = false, as = null } = {}) {
@@ -70,11 +71,11 @@ export function groupedList(list, opts) {
       day = t.date;
       const dayTotal = net.get(day) || 0;
       const total = `<span class="num">${dayTotal >= 0 ? '+' : '−'}${money(Math.abs(dayTotal))}</span>`;
-      const add = `<span class="day-add" aria-hidden="true">＋</span>`;
+      const add = `<span class="day-add" aria-hidden="true">${icon('plus')}</span>`;
       // with `dayFilter` (the Transactions screen) tapping the date shows only that day; the ＋ always adds an entry on it
       html += `${html ? '</div>' : ''}` + (opts?.dayFilter
         ? `<div class="day-head"><button type="button" class="day-label" data-day="${esc(day)}" title="Show only this day">${esc(dayLabel(day))}</button><span class="row" style="gap:10px">${total}<a class="day-plus" href="#/add?date=${esc(day)}" title="Add an entry on this date" aria-label="Add entry on ${esc(dayLabel(day))}">${add}</a></span></div>`
-        : `<a class="day-head" href="#/add?date=${esc(day)}" title="Add an entry on this date"><span>${esc(dayLabel(day))}</span><span class="row" style="gap:10px">${total}<span class="day-add" aria-label="Add entry on this date">＋</span></span></a>`)
+        : `<a class="day-head" href="#/add?date=${esc(day)}" title="Add an entry on this date"><span>${esc(dayLabel(day))}</span><span class="row" style="gap:10px">${total}<span class="day-add" aria-hidden="true">${icon('plus')}</span></span></a>`)
         + `<div class="card list" style="padding:0 12px;margin-bottom:6px">`;
     }
     html += txRow(t, opts);

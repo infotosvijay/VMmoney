@@ -9,6 +9,7 @@ import * as reports from '../reports.js';
 import { BLANK, PRESETS, presetRange, activePreset, dateRange, hasDateRange, filterChips, withSaved, withoutSaved } from '../filters.js';
 import { viewOf, whoSeg, payIcon, groupedList, catFilterOptions } from './rows.js';
 import { onSwipe, installBanner, syncReminder, moneyC, $, $$, money, toast, confirmDialog, promptDialog, empty, download, monthTitle, pickMonth, sheet, memberOptions } from './components.js';
+import { icon } from './icons.js';
 
 let shown = 200;
 let savedPick = ''; // the saved filter last chosen, so the Delete button stays available after the list refreshes
@@ -59,7 +60,7 @@ export async function transactionsScreen(root, ctx) {
   compute();
 
   const chipsHTML = () => chips.map((c) => `<button type="button" class="chip-x" data-rm="${c.keys.join(',')}" aria-label="Remove filter: ${esc(c.label)}">${esc(c.label)} <span aria-hidden="true">✕</span></button>`).join('');
-  const fsumText = () => 'Filters' + (activeCount ? ` (${activeCount} on)` : '');
+  const fsumText = () => `${icon('filter')} Filters` + (activeCount ? ` (${activeCount} on)` : '');
   // Balance in hand (Online + Cash) is always shown on your own list, whatever the filters, so it can be checked here.
   const balanceNow = hub || view.w === 'all' ? tx.inHandAll() : tx.inHand(view.w === 'other' ? view.memberId : cfg.memberId).total;
   // On one person's own tab (Mine / MM) the income figure is that person's income AFTER transfers between VJ and MM:
@@ -84,11 +85,11 @@ export async function transactionsScreen(root, ctx) {
     return `<span class="${v < 0 ? 'expense' : 'income'} num" title="Income after transfers">${v < 0 ? '−' : '+'}${moneyC(Math.abs(v))}</span>` + exp;
   };
   const bottomHTML = () => `
-        <span class="sumline small"><span title="Entries">🧾 ${list.length}</span>${totalsHTML()}${balanceNow != null ? `<span class="balchip num ${balanceNow < 0 ? 'expense' : ''}" title="Balance in hand">Bal ${moneyC(balanceNow)}</span>` : ''}</span>
-        <span class="row">${activeCount ? '<button class="btn small" data-clear>✕ Clear filters</button>' : ''}${hub ? '<button class="btn small" data-csv>⬇ CSV</button><button class="btn small" data-bulk disabled>Recategorize</button>' : ''}</span>
+        <span class="sumline small"><span title="Entries">${icon('receipt', { label: 'Entries' })} ${list.length}</span>${totalsHTML()}${balanceNow != null ? `<span class="balchip num ${balanceNow < 0 ? 'expense' : ''}" title="Balance in hand">Bal ${moneyC(balanceNow)}</span>` : ''}</span>
+        <span class="row">${activeCount ? `<button class="btn small" data-clear>${icon('close')} Clear filters</button>` : ''}${hub ? `<button class="btn small" data-csv>${icon('download')} CSV</button><button class="btn small" data-bulk disabled>Recategorize</button>` : ''}</span>
 `;
   const resultsHTML = () => `
-    ${list.length ? (hub ? hubTable(page) : groupedList(page, { dayFilter: true, showMember: scope === 'all', as: view.w === 'me' ? cfg.memberId : view.w === 'other' ? view.memberId : 'family' })) : empty('No entries here.', activeCount ? 'Nothing matches these filters. Tap <b>Clear filters</b> above.' : 'Tap the blue <b>＋</b> below to add one, or try another month.')}
+    ${list.length ? (hub ? hubTable(page) : groupedList(page, { dayFilter: true, showMember: scope === 'all', as: view.w === 'me' ? cfg.memberId : view.w === 'other' ? view.memberId : 'family' })) : empty('No entries here.', activeCount ? 'Nothing matches these filters. Tap <b>Clear filters</b> above.' : 'Tap <b>+</b> below to add one.')}
     ${list.length > shown ? `<button class="btn" style="width:100%" data-more-rows>Show ${Math.min(200, list.length - shown)} more (${list.length - shown} left)</button>` : ''}
 `;
 
@@ -98,16 +99,16 @@ export async function transactionsScreen(root, ctx) {
   root.innerHTML = `
     ${hub ? '' : installBanner() + syncReminder(hasChanges, peer)}
     ${view.seg ? whoSeg(view.w) : ''}
+    <div class="searchbar"><label class="search-field">${icon('search')}<input id="q" type="search" placeholder="Search entries" title="Words must all match. Operators: >500  <100  cat:food  type:income  acc:cash  member:vj  note:rent" value="${esc(f.q)}" aria-label="Search" style="grid-column:1/-1"></label></div>
     <div class="card">
       <div class="row">
-        ${isMonth ? '<button class="btn small" data-mnav="-1" aria-label="Previous month">‹</button>' : ''}
-        <span class="grow" style="text-align:center">${monthTitle(isMonth ? monthLabel(f.m) : f.m === 'all' ? (hasDateRange(f) ? 'All time · date range' : 'All time') : f.m)}</span>
-        ${isMonth ? '<button class="btn small" data-mnav="1" aria-label="Next month">›</button>' : ''}
+        ${isMonth ? `<button class="btn icon" data-mnav="-1" aria-label="Previous month">${icon('left')}</button>` : ''}
+        <span class="grow" style="text-align:center">${monthTitle(isMonth ? monthLabel(f.m, false) : f.m === 'all' ? (hasDateRange(f) ? 'All time · date range' : 'All time') : f.m)}</span>
+        ${isMonth ? `<button class="btn icon" data-mnav="1" aria-label="Next month">${icon('right')}</button>` : ''}
         <button class="btn small" data-allmonths>${f.m === 'all' ? 'This month' : 'All time'}</button>
       </div>
       <div class="chips active-chips" id="active-chips">${chipsHTML()}</div>
       <details class="more-filters" ${activeCount ? 'open' : ''}><summary id="fsum">${fsumText()}</summary><div class="filters">
-        <input id="q" type="search" placeholder="Search…  try  >500   cat:food   type:income" title="Words must all match. Operators: >500  <100  cat:food  type:income  acc:cash  member:vj  note:rent" value="${esc(f.q)}" aria-label="Search" style="grid-column:1/-1">
         <select id="ftype" aria-label="Type"><option value="">All types</option>${['expense', 'income', 'transfer'].map((t) => `<option value="${t}" ${f.t === t ? 'selected' : ''}>${t[0].toUpperCase() + t.slice(1)}</option>`).join('')}</select>
         <select id="fcat" aria-label="Category">${catFilterOptions(f.c)}</select>
         <select id="facc" aria-label="Account"><option value="">All accounts</option>${accounts.map((a) => `<option value="${esc(a.id)}" ${f.a === a.id ? 'selected' : ''}>${esc(a.name)}${hub ? ` (${esc(tx.memberName(a.ownerId))})` : ''}</option>`).join('')}</select>
@@ -138,7 +139,7 @@ export async function transactionsScreen(root, ctx) {
     compute();
     $('#tx-bottom', root).innerHTML = bottomHTML();
     $('#tx-results', root).innerHTML = resultsHTML();
-    $('#fsum', root).textContent = fsumText();
+    $('#fsum', root).innerHTML = fsumText();
     $('#active-chips', root).innerHTML = chipsHTML();
     selected.clear();
   }, 200);
@@ -221,7 +222,7 @@ function hubTable(list) {
       <td><span class="dot" style="background:${esc(tx.memberColor(t.ownerId))}"></span> ${esc(tx.memberName(t.ownerId))}</td>
       <td>${esc(cats.pathLabel(t))}</td><td>${esc(t.note)}</td><td>${payIcon(t)} ${esc(tx.accountName(t.accountId))}</td>
       <td class="r num ${t.type}">${t.type === 'income' ? '+' : t.type === 'expense' ? '−' : ''}${money(t.amount)}</td>
-      <td>${tx.canEdit(t) ? `<a href="#/add?id=${esc(t.id)}" aria-label="Edit">✎</a>` : ''}</td></tr>`).join('')}</tbody></table></div></div>`;
+      <td>${tx.canEdit(t) ? `<a href="#/add?id=${esc(t.id)}" aria-label="Edit">${icon('edit')}</a>` : ''}</td></tr>`).join('')}</tbody></table></div></div>`;
 }
 
 function bulkRecategorize(ids, ctx) {

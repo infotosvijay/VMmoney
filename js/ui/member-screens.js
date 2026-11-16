@@ -11,6 +11,7 @@ import * as sync from '../sync.js';
 import * as live from '../livesync.js';
 import { qrSvg, scanQR } from './qr.js';
 import { onSwipe, installBanner, syncReminder, $, money, toast, confirmDialog, promptDialog, pickFiles, shareOrDownload, empty, progress, relTime, daysSince, sheet, monthTitle, pickMonth } from './components.js';
+import { icon } from './icons.js';
 import { txRow } from './rows.js';
 import { entryScreen } from './entry-screen.js';
 import { transactionsScreen } from './transactions-screen.js';
@@ -41,10 +42,10 @@ function inHandCard(month) {
     && !(on?.openingBalance) && !(cash?.openingBalance);
   return `<div class="card">
     <div class="card-head"><h2>Balance in hand</h2>${unset ? '<a class="small" href="#/accounts">Set opening balance ›</a>' : ''}</div>
-    <div class="stat" style="padding:0"><div class="value ${h.total >= 0 ? 'income' : 'expense'}" style="font-size:1.9rem">${money(h.total)}</div></div>
+    <div class="stat" style="padding:0"><div class="value ${h.total >= 0 ? 'income' : 'expense'}" style="font-size:2.25rem">${money(h.total)}</div></div>
     <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
-      <div class="inhand"><span class="muted small">🏦 Online</span><b class="num ${h.online < 0 ? 'expense' : ''}">${money(h.online)}</b></div>
-      <div class="inhand"><span class="muted small">💵 Cash</span><b class="num ${h.cash < 0 ? 'expense' : ''}">${money(h.cash)}</b></div>
+      <div class="inhand"><span class="muted small">${icon('online')} Online</span><b class="num ${h.online < 0 ? 'expense' : ''}">${money(h.online)}</b></div>
+      <div class="inhand"><span class="muted small">${icon('cash')} Cash</span><b class="num ${h.cash < 0 ? 'expense' : ''}">${money(h.cash)}</b></div>
     </div>
     ${past ? `<p class="muted small" style="margin:8px 0 0">As it stood at the end of ${esc(monthLabel(month, false))}.</p>` : ''}</div>`;
 }
@@ -75,9 +76,9 @@ async function homeScreen(root, ctx) {
 
   root.innerHTML = `
     <div class="row between" style="margin-bottom:12px">
-      <button class="btn small" data-mnav="-1" aria-label="Previous month">‹</button>
+      <button class="btn icon" data-mnav="-1" aria-label="Previous month">${icon('left')}</button>
       ${monthTitle(monthLabel(month))}
-      <button class="btn small" data-mnav="1" aria-label="Next month" ${month >= cur ? 'disabled' : ''}>›</button>
+      <button class="btn icon" data-mnav="1" aria-label="Next month" ${month >= cur ? 'disabled' : ''}>${icon('right')}</button>
     </div>
     ${inHandCard(month)}
     <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px">
@@ -85,7 +86,7 @@ async function homeScreen(root, ctx) {
       <div class="card stat"><div class="label">Spending</div><div class="value expense">${money(tot.expense)}</div></div>
     </div>
     ${alerts.length ? `<div class="card"><div class="card-head"><h2>Budget alerts</h2><a href="#/budgets" class="small">All budgets</a></div>
-      ${alerts.map((a) => `<div style="margin-bottom:10px"><div class="row between small"><b>${esc(a.label)}</b><span class="${a.level === 'over' ? 'danger-text' : ''}">${Math.round(a.pct)}% of ${money(a.budget.limit)}</span></div>${progress(a.pct, a.level)}</div>`).join('')}</div>` : ''}
+      ${alerts.map((a) => `<div style="margin-bottom:10px"><div class="row between small"><b>${esc(a.label)}</b>${a.level === 'over' ? `<span class="st over">${icon('alert')} Over by ${money(a.used - a.budget.limit)}</span>` : `<span class="st warn">${Math.round(a.pct)}% of ${money(a.budget.limit)}</span>`}</div>${progress(a.pct, a.level)}</div>`).join('')}</div>` : ''}
     ${familyCard(month)}
     <div class="grid two">
       <div class="card"><div class="card-head"><h2>Top categories</h2><a href="#/reports?d=${month}" class="small">Reports</a></div>
@@ -306,15 +307,15 @@ export const memberRoutes = {
 };
 
 export const memberNav = [
-  { id: 'transactions', ico: '🧾', label: 'Entries', tab: true },
-  { id: 'home', ico: '🏠', label: 'Summary', tab: true },
-  { id: 'add', ico: '＋', label: 'Add', tab: true },
-  { id: 'position', ico: '🏦', label: 'Balances', tab: true },
-  { id: 'reports', ico: '📊', label: 'Reports' },
-  { id: 'budgets', ico: '🎯', label: 'Budgets' },
-  { id: 'goals', ico: '🐷', label: 'Savings goals' },
-  { id: 'family', ico: '👪', label: 'Family view' },
-  { id: 'sync', ico: '🔄', label: 'Sync' },
-  { id: 'categories', ico: '🗂️', label: 'Categories' },
-  { id: 'settings', ico: '⚙️', label: 'Settings' },
+  { id: 'transactions', ico: 'receipt', label: 'Entries', tab: true },
+  { id: 'home', ico: 'home', label: 'Summary', tab: true },
+  { id: 'add', ico: 'plus', label: 'Add', tab: true },
+  { id: 'position', ico: 'bank', label: 'Balances', tab: true },
+  { id: 'reports', ico: 'chart', label: 'Reports' },
+  { id: 'budgets', ico: 'target', label: 'Budgets' },
+  { id: 'goals', ico: 'piggy', label: 'Savings goals' },
+  { id: 'family', ico: 'users', label: 'Family view' },
+  { id: 'sync', ico: 'sync', label: 'Sync' },
+  { id: 'categories', ico: 'folder', label: 'Categories' },
+  { id: 'settings', ico: 'settings', label: 'Settings' },
 ];

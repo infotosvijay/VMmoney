@@ -10,6 +10,7 @@ import * as sync from './sync.js';
 import * as hubfile from './hubfile.js';
 import * as lock from './lock.js';
 import { $, consumeSlide, applyTheme, installCalc, toast, pickFiles, promptDialog, pickDialog, destroyCharts, sheet, shareOrDownload } from './ui/components.js';
+import { icon } from './ui/icons.js';
 import { memberRoutes, memberNav } from './ui/member-screens.js';
 import { hubRoutes, hubNav } from './ui/hub-screens.js';
 
@@ -101,7 +102,8 @@ async function render() {
   destroyCharts();
   const title = typeof def.title === 'function' ? def.title(ctx) : def.title;
   const logo = !def.back && (id === current.home) ? '<img class="top-logo" src="icons/logo-160.png" alt="" width="24" height="31">' : '';
-  $('#topbar').innerHTML = `${logo}${def.back ? `<a class="btn small" href="#/${typeof def.back === 'function' ? def.back(ctx) : def.back}" aria-label="Back">←</a>` : ''}<h1>${esc(title)}</h1>${def.topAction ? def.topAction(ctx) : ''}`;
+  $('#topbar').onclick = null; // a screen may add its own top-bar buttons
+  $('#topbar').innerHTML = `${logo}${def.back ? `<a class="btn icon" href="#/${typeof def.back === 'function' ? def.back(ctx) : def.back}" aria-label="Back">${icon('back')}</a>` : ''}<h1>${esc(title)}</h1>${def.topAction ? def.topAction(ctx) : ''}`;
   document.title = `${title} · VM Money`;
   view.innerHTML = '';
   try {
@@ -125,14 +127,14 @@ async function render() {
 // ---------- navigation ----------
 
 function navHTML(items, cls) {
-  return items.map((n) => `<a class="nav-item ${n.id === 'add' ? 'add' : ''}" data-nav="${n.id}" href="#/${n.id}" ${cls === 'tab' ? '' : ''}><span class="ico">${n.ico}</span><span>${esc(n.label)}</span></a>`).join('');
+  return items.map((n) => `<a class="nav-item ${n.id === 'add' ? 'add' : ''}" data-nav="${n.id}" href="#/${n.id}" ${cls === 'tab' ? '' : ''}><span class="ico">${icon(n.ico)}</span><span>${esc(n.label)}</span></a>`).join('');
 }
 
 function buildNav() {
   const items = current.nav;
   $('#side').innerHTML = `<div class="brand"><img src="icons/logo-160.png" alt="" width="30" height="39"> VM Money</div>${navHTML(items)}<div class="spacer"></div><div class="muted small" style="padding:8px 12px">${esc(cfg.memberName)} · ${cfg.mode === 'hub' ? 'Hub' : 'Member'} · ${esc(VERSION)}</div>`;
   const tabs = items.filter((n) => n.tab);
-  $('#tabbar').innerHTML = navHTML(tabs) + `<button type="button" class="nav-item" data-more><span class="ico">☰</span><span>More</span></button>`;
+  $('#tabbar').innerHTML = navHTML(tabs) + `<button type="button" class="nav-item" data-more><span class="ico">${icon('menu')}</span><span>More</span></button>`;
 }
 
 function highlightNav(id) {
@@ -144,7 +146,7 @@ function highlightNav(id) {
 async function onGlobalClick(e) {
   if (e.target.closest('[data-more]')) {
     const rest = current.nav.filter((n) => !n.tab);
-    sheet('More', `<div class="list">${rest.map((n) => `<a class="list-item" href="#/${n.id}" data-close><span class="avatar">${n.ico}</span><span class="main">${esc(n.label)}</span></a>`).join('')}</div>`);
+    sheet('More', `<div class="list">${rest.map((n) => `<a class="list-item" href="#/${n.id}" data-close><span class="avatar">${icon(n.ico)}</span><span class="main">${esc(n.label)}</span></a>`).join('')}</div>`);
     return;
   }
   const act = e.target.closest('[data-action]')?.dataset.action;
@@ -178,8 +180,8 @@ function onboarding() {
           </div>
           <div>
             <b>What is this device?</b>
-            <button type="button" class="mode-card" data-mode="member"><b>📱 Phone</b><span class="muted small">Daily entry of income, expenses and balances.</span></button>
-            <button type="button" class="mode-card" data-mode="hub"><b>💻 Laptop (Family Hub)</b><span class="muted small">Collects both phones' files, builds family reports, keeps the master backup.${hubOK ? '' : ' (Best in Chrome or Edge.)'}</span></button>
+            <button type="button" class="mode-card" data-mode="member"><b>${icon('phone')} Phone</b><span class="muted small">Daily entry of income, expenses and balances.</span></button>
+            <button type="button" class="mode-card" data-mode="hub"><b>${icon('laptop')} Laptop (Family Hub)</b><span class="muted small">Collects both phones' files, builds family reports, keeps the master backup.${hubOK ? '' : ' (Best in Chrome or Edge.)'}</span></button>
           </div>
           <button class="btn primary" style="width:100%">Get started</button>
           <button type="button" class="btn" id="restore">Restore from a backup file</button>
