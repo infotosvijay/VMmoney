@@ -277,7 +277,9 @@ export async function transactionsScreen(root, ctx) {
   const f = {
     q: P.get('q') || '', m: P.get('m') || thisMonth(), t: P.get('t') || '', c: P.get('c') || '', a: P.get('a') || '',
     u: P.get('u') || '', min: P.get('min') || '', max: P.get('max') || '', w: view.w === 'me' ? '' : view.w,
+    d: /^\d{4}-\d{2}-\d{2}$/.test(P.get('d') || '') ? P.get('d') : '',
   };
+  if (f.d) f.m = 'all';
   const writeUrl = (n) => {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(n)) if (v && !(k === 'm' && v === thisMonth())) qs.set(k, v);
@@ -298,9 +300,10 @@ export async function transactionsScreen(root, ctx) {
     else if (f.c.startsWith('c:')) filter.categoryId = f.c.slice(2);
     if (/^\d{4}-\d{2}$/.test(f.m)) Object.assign(filter, monthRange(f.m));
     else if (/^\d{4}$/.test(f.m)) Object.assign(filter, { from: `${f.m}-01-01`, to: `${f.m}-12-31` });
+    if (f.d) Object.assign(filter, { from: f.d, to: f.d });
     list = tx.query(filter);
     tot = reports.totals(list);
-    activeCount = [f.q, f.t, f.c, f.a, f.u, f.min, f.max].filter(Boolean).length;
+    activeCount = [f.q, f.t, f.c, f.a, f.u, f.min, f.max, f.d].filter(Boolean).length;
     if (hub) {
       const dir = sortState.dir;
       const keyFn = { date: (t) => t.date, amount: (t) => t.amount, member: (t) => tx.memberName(t.ownerId), category: (t) => cats.pathLabel(t) }[sortState.key];
@@ -352,7 +355,7 @@ export async function transactionsScreen(root, ctx) {
     <div class="card">
       <div class="row">
         ${isMonth ? '<button class="btn small" data-mnav="-1" aria-label="Previous month">‹</button>' : ''}
-        <span class="grow" style="text-align:center">${monthTitle(isMonth ? monthLabel(f.m) : f.m === 'all' ? 'All time' : f.m)}</span>
+        <span class="grow" style="text-align:center">${monthTitle(isMonth ? monthLabel(f.m) : f.m === 'all' ? (f.d ? 'All time · ' + f.d : 'All time') : f.m)}</span>
         ${isMonth ? '<button class="btn small" data-mnav="1" aria-label="Next month">›</button>' : ''}
         <button class="btn small" data-allmonths>${f.m === 'all' ? 'This month' : 'All time'}</button>
       </div>
@@ -362,6 +365,7 @@ export async function transactionsScreen(root, ctx) {
         <select id="fcat" aria-label="Category">${catFilterOptions(f.c)}</select>
         <select id="facc" aria-label="Account"><option value="">All accounts</option>${accounts.map((a) => `<option value="${esc(a.id)}" ${f.a === a.id ? 'selected' : ''}>${esc(a.name)}${hub ? ` (${esc(tx.memberName(a.ownerId))})` : ''}</option>`).join('')}</select>
         ${hub ? `<select id="fmem" aria-label="Member">${memberOptions(tx.members(), f.u)}</select>` : ''}
+        <input id="fdate" type="date" value="${esc(f.d)}" aria-label="Date" title="Show only this date" style="grid-column:1/-1">
         <input id="fmin" type="number" inputmode="decimal" placeholder="Min amount" value="${esc(f.min)}" aria-label="Minimum amount">
         <input id="fmax" type="number" inputmode="decimal" placeholder="Max amount" value="${esc(f.max)}" aria-label="Maximum amount">
       </div></details>
@@ -387,6 +391,8 @@ export async function transactionsScreen(root, ctx) {
   $('#fcat', root).onchange = (e) => setF({ c: e.target.value });
   $('#facc', root).onchange = (e) => setF({ a: e.target.value });
   $('#fmem', root)?.addEventListener('change', (e) => setF({ u: e.target.value }));
+  // Picking a date switches the period to "All time" and shows only that day's records.
+  $('#fdate', root).onchange = (e) => setF(e.target.value ? { d: e.target.value, m: 'all' } : { d: '' });
   $('#fmin', root).onchange = (e) => setF({ min: e.target.value });
   $('#fmax', root).onchange = (e) => setF({ max: e.target.value });
 
@@ -410,11 +416,11 @@ export async function transactionsScreen(root, ctx) {
       return ctx.refresh();
     }
     if (!b) return;
-    if ('clear' in b.dataset) setF({ q: '', t: '', c: '', a: '', u: '', min: '', max: '' });
+    if ('clear' in b.dataset) setF({ q: '', t: '', c: '', a: '', u: '', min: '', max: '', d: '' });
     else if (b.dataset.w) setF({ w: b.dataset.w === 'me' ? '' : b.dataset.w });
-    else if (b.dataset.mnav) setF({ m: addMonths(f.m, Number(b.dataset.mnav)) });
-    else if ('allmonths' in b.dataset) setF({ m: f.m === 'all' ? thisMonth() : 'all' });
-    else if ('mpick' in b.dataset) { const m = await pickMonth(isMonth ? f.m : thisMonth()); if (m) setF({ m }); }
+    else if (b.dataset.mnav) setF({ m: addMonths(f.m, Number(b.dataset.mnav)), d: '' });
+    else if ('allmonths' in b.dataset) setF({ m: f.m === 'all' ? thisMonth() : 'all', d: '' });
+    else if ('mpick' in b.dataset) { const m = await pickMonth(isMonth ? f.m : thisMonth()); if (m) setF({ m, d: '' }); }
     else if ('moreRows' in b.dataset) { shown += 200; ctx.refresh(); }
     else if ('csv' in b.dataset) { download(`mm-transactions-${stamp()}.csv`, reports.toCSV(list), 'text/csv'); }
     else if ('bulk' in b.dataset) bulkRecategorize([...selected], ctx);
