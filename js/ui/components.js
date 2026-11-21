@@ -345,12 +345,21 @@ export function installKeypad() {
     const v = evalAmount(el.value);
     if (hasMath(el.value) && !Number.isNaN(v)) { el.value = roundAmt(v); el.dispatchEvent(new Event('input', { bubbles: true })); }
   };
-  const hide = () => {
+  // The phone's Back closes the pad first (one extra history entry while it is open) instead of leaving the screen.
+  let pushed = false;
+  const hide = (navigating = false) => {
     pad.hidden = true;
     document.body.classList.remove('kpad-open');
     cur = null;
+    if (pushed) {
+      pushed = false;
+      if (navigating !== true && history.state?.kpad) history.back();
+    }
   };
   const show = (el) => {
+    if (!pushed) {
+      try { history.pushState({ ...history.state, kpad: 1 }, '', location.href); pushed = true; } catch { /* no history: fine */ }
+    }
     cur = el;
     (el.closest('dialog') || document.body).appendChild(pad);
     pad.hidden = false;
@@ -386,18 +395,30 @@ export function installKeypad() {
     preview();
   });
 
+  // Keys typed on the pad change the value from code, so the browser sends no "change" event. Send it ourselves.
+  const startVal = new WeakMap();
   document.addEventListener('focusin', (e) => {
     const el = e.target;
+    if (el.matches?.('input[data-keypad]')) startVal.set(el, el.value.replace(/,/g, ''));
     if (el.matches?.('input[data-keypad]') && coarse()) show(el);
     else if (cur && !pad.contains(el)) hide();
   });
   document.addEventListener('focusout', (e) => {
-    if (!e.target.matches?.('input[data-keypad]')) return;
-    settle(e.target); // "1200+980" becomes 2180 when you leave the box
-    if (e.target === cur) setTimeout(() => { if (cur && document.activeElement !== cur) hide(); }, 0);
+    const el = e.target;
+    if (!el.matches?.('input[data-keypad]')) return;
+    settle(el); // "1200+980" becomes 2180 when you leave the box
+    if (startVal.has(el) && startVal.get(el) !== el.value.replace(/,/g, '')) {
+      startVal.delete(el);
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    if (el === cur) setTimeout(() => { if (cur && document.activeElement !== cur) hide(); }, 0);
+  }, true); // capture: runs before a screen reformats the value (e.g. 1,200)
+  window.addEventListener('popstate', () => {
+    if (pushed) { const el = cur; pushed = false; hide(); el?.blur(); }
+    else if (history.state?.kpad) history.back(); // a leftover pad entry: skip it
   });
   document.addEventListener('input', (e) => { if (e.target === cur) preview(); });
   // the screen was redrawn or changed: a pad without its box makes no sense
   document.addEventListener('pointerdown', (e) => { if (cur && !pad.contains(e.target) && e.target !== cur) setTimeout(() => { if (cur && (document.activeElement !== cur || !cur.isConnected)) hide(); }, 0); }, true);
-  window.addEventListener('hashchange', hide);
+  window.addEventListener('hashchange', () => hide(true));
 }
