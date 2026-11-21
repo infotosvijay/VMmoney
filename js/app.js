@@ -20,6 +20,15 @@ let current = null; // {routes, nav, home}
 // ---------- boot ----------
 
 async function main() {
+  // If start-up stalls (e.g. the browser's database is stuck), say so instead of showing the logo forever.
+  setTimeout(() => {
+    const boot = $('#boot');
+    if (boot.hidden || boot.className !== 'boot') return; // already running, or showing onboarding / an error
+    boot.className = '';
+    boot.innerHTML = `<div class="onboard"><h1>Still starting…</h1><p class="muted">Close other VM Money tabs or windows, then try again.</p>
+      <div class="row"><button type="button" class="btn primary" id="boot-retry">Try again</button></div></div>`;
+    $('#boot-retry').onclick = () => location.reload();
+  }, 10000);
   try {
     await db.init();
   } catch (e) {
